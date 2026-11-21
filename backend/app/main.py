@@ -1,53 +1,43 @@
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from . import models  # noqa: F401 - registers SQLAlchemy models
+from .config import FRONTEND_ORIGINS
+from .database import Base, engine
+from .routers import analytics, satellites
+
+Base.metadata.create_all(bind=engine)
+
 app = FastAPI(
     title="NexOrbit API",
-    description="AI-Powered Space Traffic Intelligence & Orbital Sustainability Platform",
-    version="1.0.0"
+    description=(
+        "Space traffic intelligence prototype: satellite catalogue ingestion, "
+        "TLE storage and SGP4 position propagation."
+    ),
+    version="1.0.0",
 )
 
-# Allow our React frontend to communicate with the backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=FRONTEND_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+app.include_router(satellites.router)
+app.include_router(analytics.router)
 
-@app.get("/")
+
+@app.get("/", tags=["System"])
 def home():
     return {
-        "message": "Welcome to NexOrbit!",
-        "status": "running"
+        "project": "NexOrbit",
+        "message": "NexOrbit API is running",
+        "status": "running",
     }
 
 
-@app.get("/api/health")
+@app.get("/api/health", tags=["System"])
 def health():
-    return {
-        "status": "healthy",
-        "project": "NexOrbit"
-    }
-
-
-@app.get("/api/analytics")
-def analytics():
-    return {
-        "total_objects": 0,
-        "active_satellites": 0,
-        "debris_objects": 0,
-        "upcoming_conjunctions": 0,
-        "message": "Orbital datasets are not connected yet."
-    }
-
-
-@app.get("/api/satellites")
-def satellites():
-    return {
-        "satellites": [],
-        "message": "Satellite data will be added soon."
-    }
+    return {"status": "healthy", "project": "NexOrbit"}
