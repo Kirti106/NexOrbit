@@ -1,0 +1,24 @@
+celestrak_gp:
+  base_url: "https://celestrak.org/NORAD/elements/gp.php"
+  format: "json"
+  timeout_seconds: 30
+  retry_attempts: 3
+  retry_backoff_seconds: 2
+  cache_ttl_seconds: 7200
+  user_agent: "NexOrbit/1.0 educational research"
+
+celestrak_satcat:
+  base_url: null
+  timeout_seconds: 30
+  retry_attempts: 3
+  retry_backoff_seconds: 2
+  cache_ttl_seconds: 86400
+  user_agent: "NexOrbit/1.0 educational research"
+
+socrates:
+  base_url: "https://celestrak.org/SOCRATES/"
+  timeout_seconds: 30
+  retry_attempts: 3
+  retry_backoff_seconds: 2
+  cache_ttl_seconds: 7200
+  user_agent: "NexOrbit/1.0 educational research"

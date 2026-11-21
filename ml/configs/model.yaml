@@ -1,0 +1,19 @@
+risk_tiers:
+  low_max_probability_exclusive: 1.0e-5
+  medium_max_probability_exclusive: 1.0e-3
+  high_min_range_km: 50.0
+  constellation_artifact_range_km: 1.0
+  constellation_artifact_risk_weight: 0.1
+
+anomaly:
+  robust_z_threshold: 6.0
+  isolation_forest_contamination: 0.05
+
+clustering:
+  kmeans_clusters: 6
+  dbscan_eps: 0.8
+  dbscan_min_samples: 5
+
+forecast:
+  horizon_months: 24
+  confidence_level: 0.95
