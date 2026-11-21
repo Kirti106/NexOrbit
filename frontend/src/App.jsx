@@ -17,6 +17,8 @@ import {
 
 import "./App.css";
 
+import OrbitalGlobe from "./components/OrbitalGlobe";
+
 const stats = [
   {
     title: "Tracked Objects",
@@ -175,18 +177,7 @@ function App() {
               <span className="live-label">● INITIALISING</span>
             </div>
 
-            <div className="globe-placeholder">
-              <div className="globe-orbit orbit-one"></div>
-              <div className="globe-orbit orbit-two"></div>
-              <div className="globe">
-                <Globe2 size={105} strokeWidth={0.8} />
-              </div>
-
-              <div className="globe-caption">
-                <Orbit size={15} />
-                3D ORBITAL VIEW WILL APPEAR HERE
-              </div>
-            </div>
+            <OrbitalGlobe />
           </div>
 
           <div className="panel alerts-panel">
