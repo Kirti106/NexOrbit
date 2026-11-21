@@ -9,6 +9,10 @@ __pycache__/
 .venv/
 venv/
 env/
+ml/.venv/
+ml/.env
+ml/data/raw/
+ml/data/processed/
 
 # Environment variables and secrets
 .env
