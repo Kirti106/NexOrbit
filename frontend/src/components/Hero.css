@@ -1,0 +1,248 @@
+
+.hero-section {
+  position: relative;
+  min-height: 620px;
+  display: grid;
+  grid-template-columns: 0.85fr 1.15fr;
+  align-items: center;
+  overflow: hidden;
+  padding: 55px 6%;
+  background:
+    radial-gradient(ellipse at 72% 48%, #17385866, transparent 48%),
+    linear-gradient(110deg, #070a0c 15%, #0b1422 100%);
+}
+
+.hero-content {
+  position: relative;
+  z-index: 3;
+  max-width: 510px;
+}
+
+.hero-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 14px;
+  border: 1px solid #ffffff22;
+  border-radius: 30px;
+  color: #aab7b0;
+  font-size: 9px;
+  letter-spacing: 1.1px;
+  background: #ffffff08;
+}
+
+.status-indicator,
+.label-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #65b9ff;
+  box-shadow: 0 0 10px #65b9ff;
+}
+
+.nominal {
+  color: #65b9ff;
+}
+
+.hero-eyebrow {
+  margin-top: 45px;
+  color: #65b9ff;
+  font-size: 10px;
+  letter-spacing: 2.5px;
+}
+
+.hero-content h1 {
+  margin-top: 16px;
+  color: #f1f2ed;
+  font-size: clamp(48px, 6.2vw, 82px);
+  line-height: 0.98;
+  font-weight: 400;
+  letter-spacing: -4px;
+}
+
+.hero-content h1 span {
+  color: #9bdfff;
+}
+
+.hero-description {
+  max-width: 390px;
+  margin-top: 24px;
+  color: #a2abae;
+  font-size: 13px;
+  line-height: 1.9;
+}
+
+.hero-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.primary-hero-button,
+.secondary-hero-button {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 0 21px;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-decoration: none;
+  transition: 0.25s;
+}
+
+.primary-hero-button {
+  color: #101815;
+  background: #9bdfff;
+}
+
+.primary-hero-button:hover {
+  background: #c8edff;
+  transform: translateY(-2px);
+}
+
+.secondary-hero-button {
+  color: #e1e8e3;
+  border: 1px solid #ffffff35;
+  background: #ffffff08;
+}
+
+.secondary-hero-button:hover {
+  background: #ffffff18;
+}
+
+.hero-trust {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 48px;
+  color: #788a82;
+  font-size: 9px;
+  letter-spacing: 1px;
+}
+
+/* GLOBE */
+
+.hero-globe-area {
+  position: relative;
+  min-width: 0;
+  height: 500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.globe-glow {
+  position: absolute;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  background: #438fd333;
+  filter: blur(100px);
+}
+
+.hero-globe {
+  position: relative;
+  width: min(100%, 480px);
+  height: 480px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #071018;
+  box-shadow:
+    0 0 70px #a7e9ce1c,
+    0 0 130px #438fd322;
+}
+
+.hero-globe .cesium-container,
+.hero-globe .cesium-loading,
+.hero-globe .cesium-error {
+  height: 100%;
+  border-radius: 50%;
+}
+
+.orbit-label {
+  position: absolute;
+  top: 18%;
+  right: 4%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 15px;
+  color: #d7e3dc;
+  font-size: 9px;
+  letter-spacing: 1px;
+  background: #111a1bdf;
+  border: 1px solid #ffffff25;
+  border-radius: 8px;
+  backdrop-filter: blur(12px);
+}
+
+.hero-coordinate {
+  position: absolute;
+  bottom: 10%;
+  right: 4%;
+  color: #9bdfff;
+  font-size: 9px;
+  line-height: 1.8;
+  letter-spacing: 1px;
+  text-align: right;
+}
+
+.hero-coordinate span {
+  color: #81918a;
+}
+
+@media (max-width: 850px) {
+  .hero-section {
+    grid-template-columns: 1fr;
+    padding: 50px 7%;
+  }
+
+  .hero-globe-area {
+    height: 390px;
+    margin-top: 25px;
+  }
+
+  .hero-globe {
+    width: min(100%, 370px);
+    height: 370px;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-content h1 {
+    font-size: 55px;
+    letter-spacing: -2px;
+  }
+
+  .hero-globe-area {
+    height: 320px;
+  }
+
+  .hero-globe {
+    width: 290px;
+    height: 290px;
+  }
+
+  .hero-trust {
+    font-size: 8px;
+  }
+}
+
+
+.hero-globe .cesium-container,
+.hero-globe .cesium-viewer,
+.hero-globe .cesium-widget,
+.hero-globe canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.hero-globe .cesium-viewer {
+  position: absolute;
+  inset: 0;
+}

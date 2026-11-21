@@ -1,0 +1,123 @@
+
+.nova-navbar {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  min-height: 76px;
+  padding: 14px 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.09);
+  background: rgba(8,13,22,0.85);
+  backdrop-filter: blur(20px);
+}
+
+.nova-brand {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  color: #e8edf5;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  white-space: nowrap;
+}
+
+.nova-brand svg {
+  color: #65b9ff;
+}
+
+.nova-navigation {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px;
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 40px;
+  background: rgba(255,255,255,0.055);
+}
+
+.nav-link {
+  padding: 10px 16px;
+  color: #a6b1c0;
+  font-size: 12px;
+  text-decoration: none;
+  border-radius: 30px;
+  transition: 0.25s;
+}
+
+.nav-link:hover,
+.nav-link.selected {
+  color: #fff;
+  background: rgba(101,185,255,0.15);
+}
+
+.navbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.navbar-actions button {
+  min-height: 39px;
+  min-width: 39px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #d9e2ed;
+  background: rgba(255,255,255,0.055);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 30px;
+}
+
+.navbar-actions .user-profile {
+  padding: 4px 12px 4px 5px;
+  font-size: 11px;
+}
+
+.avatar {
+  width: 29px;
+  height: 29px;
+  display: grid;
+  place-items: center;
+  color: #07111c;
+  background: #65b9ff;
+  border-radius: 50%;
+  font-weight: 700;
+}
+
+@media(max-width:900px) {
+  .nova-navbar {
+    flex-wrap: wrap;
+    padding: 13px 18px;
+  }
+
+  .nova-navigation {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
+
+  .nav-link {
+    white-space: nowrap;
+  }
+}
+
+@media(max-width:480px) {
+  .nova-brand {
+    font-size: 13px;
+    letter-spacing: 3px;
+  }
+
+  .navbar-actions {
+    gap: 6px;
+  }
+
+  .navbar-actions .user-profile span:not(.avatar) {
+    display: none;
+  }
+}

@@ -1,0 +1,204 @@
+
+/* ORBIT MAP PAGE */
+
+.orbit-map-page {
+  min-height: 100vh;
+  padding: 45px 5%;
+  background: #080d16;
+  color: #f1f5fa;
+}
+
+.orbit-map-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+.orbit-map-header h1 {
+  font-size: clamp(28px, 4vw, 42px);
+  font-weight: 400;
+}
+
+.orbit-map-header p:not(.section-eyebrow) {
+  margin-top: 10px;
+  color: #9aaabd;
+  font-size: 12px;
+}
+
+.orbit-demo-status {
+  padding: 9px 14px;
+  border: 1px solid rgba(101,185,255,0.3);
+  border-radius: 30px;
+  color: #9bdfff;
+  background: rgba(101,185,255,0.08);
+  font-size: 9px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.orbit-map-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  gap: 18px;
+  align-items: stretch;
+}
+
+.orbit-globe-panel {
+  min-width: 0;
+  height: 590px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid rgba(120,175,220,0.2);
+  border-radius: 14px;
+  background: #050a12;
+}
+
+.orbit-globe-panel .cesium-container {
+  width: 100%;
+  height: 100%;
+}
+
+.orbit-map-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.orbit-control-card {
+  padding: 20px;
+  border: 1px solid rgba(120,175,220,0.16);
+  border-radius: 12px;
+  background: linear-gradient(145deg,#121e2d,#0d1623);
+}
+
+.orbit-control-card h3 {
+  margin-bottom: 18px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.orbit-layer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 0;
+  border-top: 1px solid rgba(120,175,220,0.12);
+  color: #cbd7e6;
+  font-size: 11px;
+}
+
+.orbit-layer input {
+  accent-color: #65b9ff;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.orbit-layer small {
+  display: block;
+  margin-top: 4px;
+  color: #8494a8;
+  font-size: 9px;
+}
+
+.orbit-object-count {
+  color: #65b9ff;
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.orbit-selected-object {
+  color: #9aaabd;
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.orbit-map-note {
+  margin-top: 18px;
+  color: #8494a8;
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+@media(max-width:950px) {
+  .orbit-map-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .orbit-map-sidebar {
+    display: grid;
+    grid-template-columns: repeat(2,minmax(0,1fr));
+  }
+
+  .orbit-globe-panel {
+    height: 480px;
+  }
+}
+
+@media(max-width:600px) {
+  .orbit-map-page {
+    padding: 35px 5%;
+  }
+
+  .orbit-map-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .orbit-map-sidebar {
+    grid-template-columns: 1fr;
+  }
+
+  .orbit-globe-panel {
+    height: 360px;
+  }
+}
+
+
+/* CESIUM GLOBE DIMENSIONS */
+
+.orbit-globe-panel .cesium-container,
+.orbit-globe-panel .cesium-viewer,
+.orbit-globe-panel .cesium-widget {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.orbit-globe-panel .cesium-viewer {
+  position: absolute;
+  inset: 0;
+}
+
+.orbit-globe-panel canvas {
+  display: block;
+}
+
+
+.orbit-map-legend {
+  display: flex;
+  gap: 22px;
+  align-items: center;
+  margin-bottom: 16px;
+  color: #cbd7e6;
+  font-size: 11px;
+}
+
+.orbit-map-legend span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.leo-dot { background: #65b9ff; }
+.meo-dot { background: #c49aff; }
+.geo-dot { background: #ffca72; }
