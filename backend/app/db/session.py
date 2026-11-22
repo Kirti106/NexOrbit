@@ -1,15 +1,23 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from ..core.config import get_settings
+from ..config import get_settings
 
-_database_url = get_settings().database_url
-_is_sqlite = _database_url.startswith("sqlite")
+settings = get_settings()
+if settings.database_url.startswith("sqlite"):
+    connect_args = {"check_same_thread": False}
+elif settings.database_url.startswith("postgresql"):
+    connect_args = {
+        "options": "-c default_transaction_read_only=on -c statement_timeout=10000"
+    }
+else:
+    connect_args = {}
 engine = create_engine(
-    _database_url,
-    connect_args={"check_same_thread": False} if _is_sqlite else {},
+    settings.database_url,
+    connect_args=connect_args,
     pool_pre_ping=True,
-    **({} if _is_sqlite else {"pool_size": 5, "max_overflow": 10}),
+    pool_size=5,
+    max_overflow=10 if not settings.database_url.startswith("sqlite") else 0,
 )
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 

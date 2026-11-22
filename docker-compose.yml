@@ -77,5 +77,19 @@ services:
       dataset_loader:
         condition: service_completed_successfully
 
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nexorbit_backend
+    restart: unless-stopped
+    environment:
+      ML_API_URL: http://ml_api:8001
+      FRONTEND_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - ml_api
+
 volumes:
   nexorbit_data:

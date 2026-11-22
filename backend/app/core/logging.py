@@ -1,29 +1,26 @@
 import json
 import logging
-from contextvars import ContextVar
+import sys
 from datetime import datetime, timezone
 
-request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
 
-
-class StructuredFormatter(logging.Formatter):
+class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         return json.dumps(
             {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "level": record.levelname,
                 "logger": record.name,
-                "request_id": request_id_var.get(),
                 "message": record.getMessage(),
-            },
-            ensure_ascii=True,
+            }
         )
 
 
-def configure_logging() -> None:
-    handler = logging.StreamHandler()
-    handler.setFormatter(StructuredFormatter())
-    root = logging.getLogger()
-    root.handlers.clear()
-    root.addHandler(handler)
-    root.setLevel(logging.INFO)
+def configure_logging(json_enabled: bool = False) -> None:
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(
+        JsonFormatter()
+        if json_enabled
+        else logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+    )
+    logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)

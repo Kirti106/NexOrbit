@@ -1,8 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   ResponsiveContainer,
-  AreaChart,
-  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -13,6 +11,7 @@ import {
   BarChart,
   Bar,
 } from "recharts";
+
 import {
   Activity,
   Satellite,
@@ -21,60 +20,47 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-import { getAnalytics } from "../api/client";
+import { ApiError } from "../components/ApiState";
+import { useApi } from "../hooks/useApi";
+import { getAnomalies, getLiveSatellites, getStats } from "../api/client";
+import { ORBIT_COLORS, classifyOrbit, fmtInt, fmtUtc } from "../utils/format";
 import "./Analytics.css";
 
-const colors = { LEO: "#65b9ff", MEO: "#b794f6", GEO: "#ffca72" };
-const periods = ["7D", "30D", "90D", "1Y"];
+const TYPE_COLORS = ["#65b9ff", "#b794f6", "#ffca72", "#7fd6a4", "#f08a8a"];
+const tooltipStyle = { background: "#101a28", border: "1px solid #344b64", borderRadius: 8 };
 
 function Analytics() {
-  const [period, setPeriod] = useState("30D");
-  const [result, setResult] = useState({ period: null, data: null, error: "" });
+  const stats = useApi(getStats, [], { intervalMs: 60000 });
+  const live = useApi(() => getLiveSatellites(500), []);
+  const anomalies = useApi(() => getAnomalies(10), []);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    getAnalytics(period, { signal: controller.signal })
-      .then((response) => setResult({ period, data: response, error: "" }))
-      .catch((requestError) => {
-        if (requestError.name !== "AbortError") {
-          setResult({ period, data: null, error: requestError.message });
-        }
-      });
-    return () => controller.abort();
-  }, [period]);
-
-  const data = result.period === period ? result.data : null;
-  const error = result.period === period ? result.error : "";
-  const orbitData = useMemo(
-    () => Object.entries(data?.satellites_by_orbit_class || {})
-      .map(([name, value]) => ({ name, value, color: colors[name] || "#93a4b8" })),
-    [data],
-  );
   const typeData = useMemo(
-    () => Object.entries(data?.satellites_by_object_type || {})
-      .map(([name, value]) => ({ name, value }))
-      .sort((left, right) => right.value - left.value)
-      .slice(0, 8),
-    [data],
+    () =>
+      Object.entries(stats.data?.satellites_by_object_type || {}).map(([name, value], index) => ({
+        name,
+        value,
+        color: TYPE_COLORS[index % TYPE_COLORS.length],
+      })),
+    [stats.data]
   );
-  const dailyData = useMemo(() => {
-    const grouped = new Map();
-    for (const event of data?.conjunctions_per_day || []) {
-      const day = event.date.slice(0, 10);
-      const item = grouped.get(day) || { name: day, high: 0, medium: 0, low: 0 };
-      item[event.risk_tier] = event.count;
-      grouped.set(day, item);
-    }
-    return [...grouped.values()];
-  }, [data]);
+  const typeTotal = typeData.reduce((sum, item) => sum + item.value, 0);
 
-  const totalObjects = Object.values(data?.satellites_by_object_type || {})
-    .reduce((total, count) => total + count, 0);
-  const conjunctionCount = dailyData.reduce(
-    (total, day) => total + day.high + day.medium + day.low,
-    0,
-  );
-  const totalOrbitObjects = orbitData.reduce((total, item) => total + item.value, 0);
+  const regimeData = useMemo(() => {
+    const counts = { LEO: 0, MEO: 0, GEO: 0 };
+    (live.data?.items || []).forEach((item) => {
+      counts[classifyOrbit(item.altitude_km)] += 1;
+    });
+    return Object.entries(counts).map(([name, objects]) => ({ name, objects }));
+  }, [live.data]);
+  const sampleSize = live.data?.items.length || 0;
+
+  const anomalyData = (anomalies.data?.items || []).map((item) => ({
+    name: item.name || String(item.norad_id),
+    score: Number(item.score.toFixed(1)),
+  }));
+
+  const value = (n) => (stats.data ? fmtInt(n) : "…");
+  const types = stats.data?.satellites_by_object_type || {};
 
   return (
     <div className="analytics-page">
@@ -82,46 +68,43 @@ function Analytics() {
         <div>
           <p className="section-eyebrow">MISSION CONTROL / DATA INTELLIGENCE</p>
           <h1>Orbital Analytics</h1>
-          <p>Dataset-backed catalogue distribution and predicted conjunction activity.</p>
+          <p>Explore orbital population, distribution and activity patterns.</p>
         </div>
-        <span className="analytics-demo-badge">LIVE CATALOGUE DATA</span>
+
+        <span className="analytics-demo-badge">
+          {stats.data ? `LIVE · ELEMENTS AS OF ${fmtUtc(stats.data.gp_freshest_at).toUpperCase()}` : stats.error ? "BACKEND OFFLINE" : "LOADING..."}
+        </span>
       </div>
 
-      <div className="analytics-periods">
-        <span>CONJUNCTION WINDOW</span>
-        {periods.map((item) => (
-          <button key={item} className={period === item ? "active" : ""} onClick={() => setPeriod(item)}>
-            {item}
-          </button>
-        ))}
-      </div>
-
-      {error && <p className="analytics-disclaimer" role="alert">{error}</p>}
+      <ApiError message={stats.error} title="Could not load statistics" />
 
       <div className="analytics-stats">
         <div className="analytics-stat-card">
           <Satellite />
-          <span>CATALOGUE OBJECTS</span>
-          <h2>{data ? totalObjects.toLocaleString() : "—"}</h2>
-          <small>SATCAT dataset</small>
+          <span>TRACKED OBJECTS</span>
+          <h2>{value(stats.data?.tracked_satellites)}</h2>
+          <small><TrendingUp size={13} /> Catalogue size</small>
         </div>
+
         <div className="analytics-stat-card">
           <Orbit />
-          <span>LEO OBJECTS</span>
-          <h2>{(data?.satellites_by_orbit_class?.LEO || 0).toLocaleString()}</h2>
-          <small>Latest available GP elements</small>
+          <span>PAYLOADS</span>
+          <h2>{value(types.PAYLOAD)}</h2>
+          <small>Catalogued payload objects</small>
         </div>
+
         <div className="analytics-stat-card">
           <AlertTriangle />
-          <span>PREDICTED APPROACHES</span>
-          <h2>{conjunctionCount.toLocaleString()}</h2>
-          <small>SOCRATES events in selected window</small>
+          <span>PREDICTED EVENTS</span>
+          <h2>{value(stats.data?.conjunctions)}</h2>
+          <small>SOCRATES rows stored (incl. repeats)</small>
         </div>
+
         <div className="analytics-stat-card">
           <Activity />
-          <span>HIGH-RISK APPROACHES</span>
-          <h2>{dailyData.reduce((total, day) => total + day.high, 0).toLocaleString()}</h2>
-          <small>Risk tiers derived from source estimates</small>
+          <span>HIGH-TIER EVENTS</span>
+          <h2>{value(stats.data?.high_risk_conjunctions)}</h2>
+          <small>Derived tier, not observed</small>
         </div>
       </div>
 
@@ -129,56 +112,74 @@ function Analytics() {
         <section className="analytics-chart-card population-chart">
           <div className="analytics-card-heading">
             <div>
-              <h3>OBJECTS BY ORBIT CLASS</h3>
-              <p>Classified from the latest available orbital elements</p>
+              <h3>ORBIT REGIME DISTRIBUTION</h3>
+              <p>{sampleSize} objects in the live sample</p>
             </div>
             <Activity size={19} />
           </div>
+
           <div className="chart-area">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={orbitData}>
+              <BarChart data={regimeData}>
                 <CartesianGrid stroke="#26384b" strokeDasharray="3 3" />
                 <XAxis dataKey="name" stroke="#8494a8" fontSize={10} />
-                <YAxis stroke="#8494a8" fontSize={10} />
-                <Tooltip contentStyle={{ background: "#101a28", border: "1px solid #344b64", borderRadius: 8 }} />
-                <Bar dataKey="value" fill="#65b9ff" radius={[5, 5, 0, 0]} />
+                <YAxis stroke="#8494a8" fontSize={10} allowDecimals={false} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Bar dataKey="objects" radius={[5, 5, 0, 0]}>
+                  {regimeData.map((entry) => (
+                    <Cell key={entry.name} fill={ORBIT_COLORS[entry.name]} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
+
           <div className="analytics-legend">
-            {orbitData.map((item) => (
-              <span key={item.name}><i style={{ background: item.color }} /> {item.name}</span>
-            ))}
+            <span><i className="leo-color" /> LEO</span>
+            <span><i className="meo-color" /> MEO</span>
+            <span><i className="geo-color" /> GEO</span>
           </div>
         </section>
 
         <section className="analytics-chart-card distribution-chart">
           <div className="analytics-card-heading">
             <div>
-              <h3>ORBITAL DISTRIBUTION</h3>
-              <p>Share of objects with classifiable orbital elements</p>
+              <h3>OBJECT TYPES</h3>
+              <p>Catalogue share by object type</p>
             </div>
             <Orbit size={19} />
           </div>
+
           <div className="donut-chart">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={orbitData} dataKey="value" nameKey="name" innerRadius={65} outerRadius={95} paddingAngle={4} stroke="none">
-                  {orbitData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                <Pie
+                  data={typeData}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={65}
+                  outerRadius={95}
+                  paddingAngle={4}
+                  stroke="none"
+                >
+                  {typeData.map((entry) => (
+                    <Cell key={entry.name} fill={entry.color} />
+                  ))}
                 </Pie>
-                <Tooltip contentStyle={{ background: "#101a28", border: "1px solid #344b64", borderRadius: 8 }} />
+                <Tooltip contentStyle={tooltipStyle} />
               </PieChart>
             </ResponsiveContainer>
             <div className="donut-center">
-              <strong>{totalOrbitObjects.toLocaleString()}</strong>
-              <span>CLASSIFIED</span>
+              <strong>{fmtInt(typeTotal)}</strong>
+              <span>OBJECTS</span>
             </div>
           </div>
+
           <div className="distribution-legend">
-            {orbitData.map((item) => (
+            {typeData.map((item) => (
               <div key={item.name}>
                 <span><i style={{ background: item.color }} /> {item.name}</span>
-                <strong>{totalOrbitObjects ? `${Math.round(item.value / totalOrbitObjects * 100)}%` : "—"}</strong>
+                <strong>{typeTotal ? ((item.value / typeTotal) * 100).toFixed(1) : 0}%</strong>
               </div>
             ))}
           </div>
@@ -187,56 +188,44 @@ function Analytics() {
         <section className="analytics-chart-card activity-chart">
           <div className="analytics-card-heading">
             <div>
-              <h3>CONJUNCTIONS BY DAY</h3>
-              <p>Predicted SOCRATES events by derived risk tier</p>
+              <h3>UNUSUAL ORBIT PROFILES</h3>
+              <p>Top 10 outlier scores (not maneuver detection)</p>
             </div>
             <TrendingUp size={19} />
           </div>
+
           <div className="chart-area">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={dailyData}>
+              <BarChart data={anomalyData}>
                 <CartesianGrid stroke="#26384b" strokeDasharray="3 3" />
-                <XAxis dataKey="name" stroke="#8494a8" fontSize={10} />
+                <XAxis dataKey="name" stroke="#8494a8" fontSize={9} interval={0} angle={-25} textAnchor="end" height={60} />
                 <YAxis stroke="#8494a8" fontSize={10} />
-                <Tooltip contentStyle={{ background: "#101a28", border: "1px solid #344b64", borderRadius: 8 }} />
-                <Area type="monotone" dataKey="high" stroke="#ff8585" fill="#ff858522" />
-                <Area type="monotone" dataKey="medium" stroke="#f5d47a" fill="#f5d47a22" />
-                <Area type="monotone" dataKey="low" stroke="#65b9ff" fill="#65b9ff22" />
-              </AreaChart>
+                <Tooltip contentStyle={tooltipStyle} />
+                <Bar dataKey="score" fill="#65b9ff" radius={[5, 5, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
-          </div>
-          <div className="analytics-legend">
-            <span><i style={{ background: "#ff8585" }} /> HIGH</span>
-            <span><i style={{ background: "#f5d47a" }} /> MEDIUM</span>
-            <span><i style={{ background: "#65b9ff" }} /> LOW</span>
           </div>
         </section>
 
-        <section className="analytics-chart-card activity-chart">
-          <div className="analytics-card-heading">
-            <div>
-              <h3>OBJECT TYPE COUNTS</h3>
-              <p>Classification provided by the catalogue dataset</p>
-            </div>
-            <Satellite size={19} />
-          </div>
-          <div className="chart-area">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={typeData} layout="vertical">
-                <CartesianGrid stroke="#26384b" strokeDasharray="3 3" />
-                <XAxis type="number" stroke="#8494a8" fontSize={10} />
-                <YAxis dataKey="name" type="category" stroke="#8494a8" fontSize={9} width={90} />
-                <Tooltip contentStyle={{ background: "#101a28", border: "1px solid #344b64", borderRadius: 8 }} />
-                <Bar dataKey="value" fill="#b794f6" radius={[0, 5, 5, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+        <section className="analytics-insight-card">
+          <p className="section-eyebrow">ORBITAL INSIGHT</p>
+          <h3>Understanding Earth's orbital environment</h3>
+          <p>
+            Figures come from the NexOrbit ML service: CelesTrak catalogue and
+            element sets, plus SOCRATES close-approach predictions. The regime
+            chart uses a sample of up to 500 objects, not the full catalogue.
+          </p>
+          <div className="insight-footer">
+            <Activity size={17} />
+            LIVE DATA · ML SERVICE
           </div>
         </section>
       </div>
 
       <p className="analytics-disclaimer">
-        Orbit classes are derived from mean motion. Conjunctions are predicted encounters from the SOCRATES sample,
-        not observed collisions or validated collision probabilities.
+        Conjunction figures are SOCRATES-derived predictions, not observed events.
+        Outlier scores describe unusual element profiles within one snapshot and do
+        not indicate maneuvers or failures.
       </p>
     </div>
   );

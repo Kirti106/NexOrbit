@@ -1,59 +1,49 @@
 import {
-  Satellite, AlertTriangle, Orbit, Activity,
+  Satellite, Radio, AlertTriangle, Orbit, Activity,
   ShieldCheck, ArrowUpRight, Globe2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
 
-import { getStats } from "../api/client";
 import Hero from "../components/Hero";
+import { ApiError } from "../components/ApiState";
+import { useApi } from "../hooks/useApi";
+import { getStats } from "../api/client";
+import { fmtInt, fmtUtc } from "../utils/format";
 import "./Overview.css";
 
-function Overview() {
-  const [stats, setStats] = useState(null);
-  const [dataStatus, setDataStatus] = useState("CONNECTING TO API");
-
-  useEffect(() => {
-    const controller = new AbortController();
-    getStats({ signal: controller.signal })
-      .then((response) => {
-        setStats(response);
-        setDataStatus(response.total_satellites ? "DATASET CONNECTED" : "DATASET EMPTY");
-      })
-      .catch((error) => {
-        if (error.name !== "AbortError") setDataStatus("API UNAVAILABLE");
-      });
-    return () => controller.abort();
-  }, []);
-
-  const number = (value) => (
-    Number.isFinite(value) ? value.toLocaleString() : "—"
-  );
-  const fleetStats = [
+function buildFleetStats(stats) {
+  const types = stats?.satellites_by_object_type || {};
+  const value = (n) => (stats ? fmtInt(n) : "Loading...");
+  return [
     {
       label: "TRACKED OBJECTS",
-      value: number(stats?.total_satellites),
+      value: value(stats?.tracked_satellites),
       description: "Objects in the satellite catalogue",
       icon: Satellite,
     },
     {
-      label: "CATALOG PAYLOADS",
-      value: number(stats?.satellites_by_object_type?.PAYLOAD),
-      description: "Payloads classified in SATCAT",
+      label: "PAYLOADS",
+      value: value(types.PAYLOAD),
+      description: "Catalogued payloads (not all operational)",
+      icon: Radio,
+    },
+    {
+      label: "DEBRIS & ROCKET BODIES",
+      value: value((types.DEBRIS || 0) + (types["ROCKET BODY"] || 0)),
+      description: "Classified debris and rocket bodies",
       icon: Orbit,
     },
     {
-      label: "ORBITAL DEBRIS",
-      value: number(stats?.satellites_by_object_type?.DEBRIS),
-      description: "Objects classified as debris",
-      icon: Orbit,
-    },
-    {
-      label: "CLOSE APPROACHES",
-      value: number(stats?.conjunction_count),
-      description: "Predicted SOCRATES events",
+      label: "HIGH-TIER CLOSE APPROACHES",
+      value: value(stats?.high_risk_conjunctions),
+      description: "Predicted (SOCRATES-derived), not observed",
       icon: AlertTriangle,
     },
   ];
+}
+
+function Overview() {
+  const { data: stats, error } = useApi(getStats, [], { intervalMs: 60000 });
+  const fleetStats = buildFleetStats(stats);
 
   return (
     <>
@@ -71,9 +61,15 @@ function Overview() {
 
           <div className="section-status">
             <span className="status-indicator"></span>
-            {dataStatus}
+            {stats
+              ? `LIVE · ELEMENTS AS OF ${fmtUtc(stats.gp_freshest_at).toUpperCase()}`
+              : error
+                ? "BACKEND OFFLINE"
+                : "CONNECTING..."}
           </div>
         </div>
+
+        <ApiError message={error} title="Could not load catalogue statistics" />
 
         <div className="fleet-grid">
           {fleetStats.map((stat) => {
@@ -113,7 +109,7 @@ function Overview() {
               Monitor satellite positions and orbital movement using
               orbital catalogue data.
             </p>
-            <span className="feature-status">IN DEVELOPMENT</span>
+            <span className="feature-status">LIVE</span>
           </article>
 
           <article className="intelligence-card">
@@ -137,7 +133,7 @@ function Overview() {
               Identify potentially hazardous close approaches between
               tracked objects.
             </p>
-            <span className="feature-status">IN DEVELOPMENT</span>
+            <span className="feature-status">LIVE</span>
           </article>
         </div>
       </section>

@@ -1,51 +1,49 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Orbit, Satellite, Activity } from "lucide-react";
-import { getLivePositions } from "../api/client";
 import OrbitalGlobe from "../components/OrbitalGlobe";
+import { ApiError } from "../components/ApiState";
+import { useApi } from "../hooks/useApi";
+import { getGroundTrack, getLiveSatellites } from "../api/client";
+import { classifyOrbit, fmtKm, fmtUtc } from "../utils/format";
 import "./OrbitMap.css";
 
-function orbitForAltitude(altitudeKm) {
-  if (altitudeKm < 2000) return "LEO";
-  if (altitudeKm < 35786) return "MEO";
-  return "GEO";
-}
+const LAYERS = [
+  { id: "LEO", label: "Low Earth Orbit", altitude: "below 2,000 km" },
+  { id: "MEO", label: "Medium Earth Orbit", altitude: "2,000–34,000 km" },
+  { id: "GEO", label: "Geostationary / high orbit", altitude: "above ~34,000 km" },
+];
 
 function OrbitMap() {
   const [layers, setLayers] = useState({ LEO: true, MEO: true, GEO: true });
-  const [satellites, setSatellites] = useState([]);
-  const [selectedSatellite, setSelectedSatellite] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [selectedId, setSelectedId] = useState(null);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    getLivePositions(500, { signal: controller.signal })
-      .then((response) => {
-        setSatellites((response.items || []).map((item) => ({
-          ...item,
-          noradId: item.norad_id,
-          lat: item.latitude,
-          lon: item.longitude,
-          orbit: orbitForAltitude(item.altitude_km),
-        })));
-      })
-      .catch((requestError) => {
-        if (requestError.name !== "AbortError") setError(requestError.message);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, []);
+  const live = useApi(() => getLiveSatellites(500), [], { intervalMs: 30000 });
+  const trackState = useApi(() => getGroundTrack(selectedId, 3, 60), [selectedId], {
+    enabled: selectedId != null,
+  });
 
-  const visibleSatellites = useMemo(
-    () => satellites.filter((satellite) => layers[satellite.orbit]),
-    [satellites, layers],
+  const satellites = useMemo(
+    () =>
+      (live.data?.items || []).map((item) => ({
+        ...item,
+        orbit: classifyOrbit(item.altitude_km),
+      })),
+    [live.data]
   );
+
+  const visible = useMemo(
+    () => satellites.filter((satellite) => layers[satellite.orbit]),
+    [satellites, layers]
+  );
+
+  const selected = satellites.find((satellite) => satellite.norad_id === selectedId) || null;
+  const track = selectedId != null ? trackState.data?.points || [] : [];
+
+  const handleSelect = useCallback((id) => setSelectedId(id), []);
 
   function toggleLayer(orbit) {
     setLayers((previous) => ({ ...previous, [orbit]: !previous[orbit] }));
-    setSelectedSatellite(null);
+    setSelectedId(null);
   }
 
   return (
@@ -54,63 +52,88 @@ function OrbitMap() {
         <div>
           <p className="section-eyebrow">MISSION CONTROL / VISUALISATION</p>
           <h1>Orbital Map</h1>
-          <p>Current propagated positions for objects with available GP elements.</p>
+          <p>Explore satellite objects and orbital environments around Earth.</p>
         </div>
+
         <div className="orbit-demo-status">
-          ● {error ? "PROPAGATION OFFLINE" : loading ? "LOADING POSITIONS" : "PROPAGATED POSITIONS"}
+          {live.error && !live.data
+            ? "● BACKEND OFFLINE"
+            : live.data
+              ? `● LIVE · updated ${fmtUtc(live.data.generated_at)}`
+              : "● LOADING..."}
         </div>
       </div>
 
-      {error && <p className="orbit-map-note" role="alert">{error}</p>}
+      <ApiError message={live.error} title="Live positions unavailable" />
 
       <div className="orbit-map-legend">
-        <span><i className="legend-dot leo-dot" /> LEO</span>
-        <span><i className="legend-dot meo-dot" /> MEO</span>
-        <span><i className="legend-dot geo-dot" /> GEO</span>
+        <span><i className="legend-dot leo-dot"></i> LEO</span>
+        <span><i className="legend-dot meo-dot"></i> MEO</span>
+        <span><i className="legend-dot geo-dot"></i> GEO</span>
       </div>
 
       <div className="orbit-map-layout">
         <div className="orbit-globe-panel">
-          <OrbitalGlobe satellites={visibleSatellites} onSatelliteSelect={setSelectedSatellite} />
+          <OrbitalGlobe
+            satellites={visible}
+            selectedId={selectedId}
+            track={track}
+            onSatelliteSelect={handleSelect}
+          />
         </div>
 
         <aside className="orbit-map-sidebar">
           <div className="orbit-control-card">
             <h3>ORBITAL LAYERS</h3>
-            {[
-              { id: "LEO", label: "Low Earth Orbit", altitude: "< 2,000 km" },
-              { id: "MEO", label: "Medium Earth Orbit", altitude: "2,000–35,786 km" },
-              { id: "GEO", label: "Geostationary region", altitude: "≥ 35,786 km" },
-            ].map((layer) => (
+            {LAYERS.map((layer) => (
               <label className="orbit-layer" key={layer.id}>
-                <div>{layer.label}<small>{layer.altitude}</small></div>
-                <input type="checkbox" checked={layers[layer.id]} onChange={() => toggleLayer(layer.id)} />
+                <div>
+                  {layer.label}
+                  <small>{layer.altitude}</small>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={layers[layer.id]}
+                  onChange={() => toggleLayer(layer.id)}
+                />
               </label>
             ))}
           </div>
 
           <div className="orbit-control-card">
             <h3>VISIBLE OBJECTS</h3>
-            <div className="orbit-object-count">{visibleSatellites.length.toLocaleString()}</div>
+            <div className="orbit-object-count">{visible.length}</div>
             <p className="orbit-selected-object">
-              {loading ? "Loading latest positions…" : "Latest propagated catalogue positions"}
+              of {satellites.length} objects in the live sample
             </p>
           </div>
 
           <div className="orbit-control-card">
             <h3>SELECTED OBJECT</h3>
-            {selectedSatellite ? (
+            {selected ? (
               <div className="orbit-selected-object">
                 <Satellite size={20} />
-                <h4>{selectedSatellite.name}</h4>
-                <p>NORAD ID: {selectedSatellite.norad_id}</p>
-                <p>Orbit: {selectedSatellite.orbit}</p>
-                <p>Altitude: {selectedSatellite.altitude_km.toFixed(1)} km</p>
+                <h4>{selected.name}</h4>
+                <p>NORAD ID: {selected.norad_id}</p>
+                <p>Type: {selected.object_type}</p>
+                <p>Orbit: {selected.orbit}</p>
+                <p>Altitude: {fmtKm(selected.altitude_km)}</p>
+                <p>
+                  Lat / Lon: {selected.latitude.toFixed(2)}°, {selected.longitude.toFixed(2)}°
+                </p>
+                <p>
+                  {trackState.loading
+                    ? "Loading 3 h ground track..."
+                    : trackState.error
+                      ? "Ground track unavailable"
+                      : "Showing next 3 h ground track"}
+                </p>
               </div>
             ) : (
               <p className="orbit-selected-object">
-                <Activity size={17} /><br />
-                Select a propagated object marker on the globe.
+                <Activity size={17} />
+                <br />
+                Select a satellite marker on the globe to inspect it.
               </p>
             )}
           </div>
@@ -118,7 +141,9 @@ function OrbitMap() {
       </div>
 
       <p className="orbit-map-note">
-        <Orbit size={14} /> Positions are propagated from the latest available GP element set and are estimates, not precise state vectors.
+        <Orbit size={14} /> Positions are SGP4 estimates from CelesTrak mean elements
+        (a sample of up to 500 objects, refreshed every 30 s). Accuracy degrades as
+        element sets age.
       </p>
     </div>
   );

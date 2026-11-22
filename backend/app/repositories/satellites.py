@@ -1,7 +1,30 @@
+import math
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
-from ..models import GPHistory, Satellite
+from ..models.satellite import GPHistory, Satellite
+
+EARTH_RADIUS_KM = 6378.137
+EARTH_MU_KM3_S2 = 398600.4418
+
+
+def altitude_from_mean_motion(mean_motion: float | None) -> float | None:
+    if mean_motion is None or mean_motion <= 0:
+        return None
+    angular_velocity = mean_motion * 2 * math.pi / 86400
+    semi_major_axis = (EARTH_MU_KM3_S2 / angular_velocity**2) ** (1 / 3)
+    return semi_major_axis - EARTH_RADIUS_KM
+
+
+def orbit_class(mean_motion: float | None) -> str | None:
+    altitude = altitude_from_mean_motion(mean_motion)
+    if altitude is None:
+        return None
+    if altitude < 2000:
+        return "LEO"
+    if altitude < 35786:
+        return "MEO"
+    return "GEO"
 
 
 def list_satellites(
@@ -9,76 +32,105 @@ def list_satellites(
     *,
     q: str | None,
     object_type: str | None,
+    requested_orbit: str | None,
     country: str | None,
-    orbit_class: str | None,
     sort: str,
     limit: int,
     offset: int,
-) -> tuple[int, list[Satellite]]:
-    statement = select(Satellite)
+):
+    latest = (
+        select(
+            GPHistory.norad_cat_id.label("norad_cat_id"),
+            GPHistory.epoch.label("epoch"),
+            GPHistory.mean_motion.label("mean_motion"),
+            GPHistory.eccentricity.label("eccentricity"),
+            GPHistory.inclination.label("inclination"),
+            func.row_number()
+            .over(
+                partition_by=GPHistory.norad_cat_id,
+                order_by=GPHistory.epoch.desc(),
+            )
+            .label("row_number"),
+        )
+        .subquery()
+    )
+    statement = select(
+        Satellite,
+        latest.c.epoch,
+        latest.c.mean_motion,
+        latest.c.eccentricity,
+        latest.c.inclination,
+    ).outerjoin(
+        latest,
+        (latest.c.norad_cat_id == Satellite.norad_cat_id)
+        & (latest.c.row_number == 1),
+    )
+    count_statement = select(func.count(func.distinct(Satellite.norad_cat_id))).select_from(
+        Satellite
+    ).outerjoin(
+        latest,
+        (latest.c.norad_cat_id == Satellite.norad_cat_id)
+        & (latest.c.row_number == 1),
+    )
+    filters = []
     if q:
-        match = f"%{q}%"
-        statement = statement.where(
+        pattern = f"%{q}%"
+        filters.append(
             or_(
-                Satellite.object_name.ilike(match),
-                cast(Satellite.norad_cat_id, String).ilike(match),
+                Satellite.object_name.ilike(pattern),
+                cast(Satellite.norad_cat_id, String).ilike(pattern),
             )
         )
     if object_type:
-        statement = statement.where(
-            func.lower(Satellite.object_type) == object_type.lower()
-        )
+        filters.append(Satellite.object_type.ilike(object_type))
     if country:
-        statement = statement.where(
-            func.lower(func.coalesce(Satellite.country, Satellite.owner_country))
-            == country.lower()
+        filters.append(Satellite.owner_country.ilike(country))
+    if requested_orbit == "LEO":
+        filters.append(latest.c.mean_motion > _mean_motion_for_altitude(2000))
+    elif requested_orbit == "MEO":
+        filters.extend(
+            [
+                latest.c.mean_motion <= _mean_motion_for_altitude(2000),
+                latest.c.mean_motion > _mean_motion_for_altitude(35786),
+            ]
         )
-    if orbit_class:
-        latest = (
-            select(GPHistory.norad_cat_id, func.max(GPHistory.epoch).label("epoch"))
-            .group_by(GPHistory.norad_cat_id)
-            .subquery()
-        )
-        motion = (
-            select(GPHistory.mean_motion)
-            .join(
-                latest,
-                (GPHistory.norad_cat_id == latest.c.norad_cat_id)
-                & (GPHistory.epoch == latest.c.epoch),
-            )
-            .where(
-                GPHistory.norad_cat_id
-                == Satellite.norad_cat_id
-            )
-            .limit(1)
-            .scalar_subquery()
-        )
-        boundaries = {
-            "LEO": motion > 11.25,
-            "MEO": (motion <= 11.25) & (motion > 1.5),
-            "GEO": motion <= 1.5,
-        }
-        statement = statement.where(boundaries[orbit_class])
-    total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
-    statement = statement.order_by(
-        Satellite.object_name.desc()
-        if sort == "name_desc"
-        else Satellite.object_name.asc()
-    )
-    items = list(db.scalars(statement.offset(offset).limit(limit)).all())
-    return int(total), items
+    elif requested_orbit == "GEO":
+        filters.append(latest.c.mean_motion <= _mean_motion_for_altitude(35786))
+    if filters:
+        statement = statement.where(*filters)
+        count_statement = count_statement.where(*filters)
+
+    ordering = {
+        "name": Satellite.object_name.asc(),
+        "-name": Satellite.object_name.desc(),
+        "norad_id": Satellite.norad_cat_id.asc(),
+        "-norad_id": Satellite.norad_cat_id.desc(),
+    }[sort]
+    total = db.scalar(count_statement) or 0
+    rows = db.execute(
+        statement.order_by(ordering).offset(offset).limit(limit)
+    ).all()
+    return total, rows
 
 
-def get_satellite(db: Session, norad_id: int) -> Satellite | None:
-    return db.scalar(
+def get_satellite(db: Session, norad_id: int):
+    satellite = db.scalar(
         select(Satellite).where(Satellite.norad_cat_id == norad_id)
     )
-
-
-def latest_elements(db: Session, norad_id: int) -> GPHistory | None:
-    return db.scalar(
+    if satellite is None:
+        return None, None
+    latest = db.execute(
         select(GPHistory)
         .where(GPHistory.norad_cat_id == norad_id)
         .order_by(GPHistory.epoch.desc())
         .limit(1)
-    )
+    ).scalar_one_or_none()
+    return satellite, latest
+
+
+def _mean_motion_for_altitude(altitude_km: float) -> float:
+    semi_major_axis = EARTH_RADIUS_KM + altitude_km
+    period_minutes = 2 * math.pi * math.sqrt(
+        semi_major_axis**3 / EARTH_MU_KM3_S2
+    ) / 60
+    return 1440 / period_minutes

@@ -1,57 +1,55 @@
-import asyncio
-import logging
+"""Thin async client for the ML API. The backend never recomputes ML output."""
 from typing import Any
 
 import httpx
+from fastapi import HTTPException
 
-logger = logging.getLogger(__name__)
+from ..config import ML_API_TIMEOUT, ML_API_URL
+
+_client: httpx.AsyncClient | None = None
 
 
-class MLUnavailable(RuntimeError):
-    pass
+def get_client() -> httpx.AsyncClient:
+    global _client
+    if _client is None:
+        _client = httpx.AsyncClient(
+            base_url=ML_API_URL,
+            timeout=ML_API_TIMEOUT,
+            headers={"User-Agent": "NexOrbit-backend/1.0"},
+        )
+    return _client
 
 
-class MLClient:
-    def __init__(self, base_url: str, client: httpx.AsyncClient | None = None) -> None:
-        self.base_url = base_url.rstrip("/")
-        self._client = client
+async def close_client() -> None:
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
 
-    async def open(self) -> None:
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                base_url=self.base_url,
-                timeout=httpx.Timeout(8.0, connect=2.0),
-            )
 
-    async def close(self) -> None:
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
+async def ml_get(path: str, params: dict[str, Any] | None = None) -> Any:
+    """GET from the ML API and return its JSON unchanged.
 
-    async def get_json(
-        self,
-        path: str,
-        params: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        if self._client is None:
-            await self.open()
-        assert self._client is not None
-        last_error: Exception | None = None
-        for attempt in range(3):
-            try:
-                response = await self._client.get(path, params=params)
-                if response.status_code >= 500:
-                    response.raise_for_status()
-                if response.is_error:
-                    raise MLUnavailable(
-                        f"ML service rejected the request ({response.status_code})"
-                    )
-                return response.json()
-            except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as exc:
-                last_error = exc
-                if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code < 500:
-                    break
-                if attempt < 2:
-                    await asyncio.sleep(0.1 * (attempt + 1))
-        logger.warning("ML service request failed for %s: %s", path, last_error)
-        raise MLUnavailable("ML service is unavailable") from last_error
+    Upstream 4xx errors are passed through (404 unknown satellite, 422 bad
+    input). Connection problems become 502, timeouts become 504.
+    """
+    clean = {k: v for k, v in (params or {}).items() if v is not None}
+    try:
+        response = await get_client().get(path, params=clean)
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="ML API timed out") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"ML API unreachable at {ML_API_URL}. Is the ml_api service running?",
+        ) from exc
+
+    if 400 <= response.status_code < 500:
+        try:
+            detail = response.json().get("detail", response.text)
+        except ValueError:
+            detail = response.text
+        raise HTTPException(status_code=response.status_code, detail=detail)
+    if response.status_code >= 500:
+        raise HTTPException(status_code=502, detail="ML API returned an error")
+    return response.json()

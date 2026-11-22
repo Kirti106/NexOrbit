@@ -1,101 +1,118 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any
 
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import Conjunction, GPHistory, Satellite
-from .risk import risk_tier, tier_filter
+from ..core.cache import cache
+from ..repositories import catalog
+from ..repositories.analytics import conjunction_daily_data, statistics_data
+from ..services.risk import risk_tier
 
-_PERIOD_DAYS = {"7D": 7, "30D": 30, "90D": 90, "1Y": 365}
-
-
-def _orbit_class(mean_motion: float | None) -> str | None:
-    if mean_motion is None or mean_motion <= 0:
-        return None
-    if mean_motion > 11.25:
-        return "LEO"
-    if mean_motion > 1.5:
-        return "MEO"
-    return "GEO"
+PERIOD_DAYS = {"7D": 7, "30D": 30, "90D": 90, "1Y": 365}
 
 
-def _aggregates(db: Session) -> tuple[dict[str, int], dict[str, int], dict[str, datetime | None]]:
-    types = db.execute(
-        select(func.coalesce(Satellite.object_type, "UNKNOWN"), func.count())
-        .group_by(Satellite.object_type)
-    ).all()
-    by_type = {str(kind).upper(): int(count) for kind, count in types}
-    latest_epoch = (
-        select(GPHistory.norad_cat_id, func.max(GPHistory.epoch).label("epoch"))
-        .group_by(GPHistory.norad_cat_id)
-        .subquery()
-    )
-    latest_rows = db.execute(
-        select(GPHistory.mean_motion)
-        .join(
-            latest_epoch,
-            (GPHistory.norad_cat_id == latest_epoch.c.norad_cat_id)
-            & (GPHistory.epoch == latest_epoch.c.epoch),
-        )
-    ).scalars()
-    by_orbit: dict[str, int] = {}
-    for mean_motion in latest_rows:
-        orbit = _orbit_class(mean_motion)
-        if orbit:
-            by_orbit[orbit] = by_orbit.get(orbit, 0) + 1
-    freshness = {
-        "gp_fetched_at": db.scalar(select(func.max(GPHistory.fetched_at))),
-        "conjunctions_fetched_at": db.scalar(select(func.max(Conjunction.fetched_at))),
+def get_stats(db: Session, ttl: int) -> dict:
+    cached = cache.get("stats")
+    if cached is not None:
+        return cached
+    data = statistics_data(db)
+    total = data["total"]
+    by_type = data["by_type"]
+    by_orbit = data["by_orbit"]
+    conjunction_count = data["conjunction_count"]
+    result = {
+        "generated_at": datetime.now(timezone.utc),
+        "total_objects": total or None,
+        "counts_by_object_type": by_type or None,
+        "counts_by_orbit_class": by_orbit if sum(by_orbit.values()) else None,
+        "conjunctions": conjunction_count or None,
+        "high_risk_conjunctions": data["high_count"] if conjunction_count else None,
+        "data_freshness": {
+            "gp_fetched_at": data["gp_fresh"],
+            "conjunctions_fetched_at": data["conjunction_fresh"],
+        },
+        "unavailable_reasons": {
+            **({"catalog": "No satellite catalog records are available."} if total == 0 else {}),
+            **({"orbit_class": "No orbital elements are available."} if not sum(by_orbit.values()) else {}),
+            **({"conjunctions": "No conjunction data is available."} if conjunction_count == 0 else {}),
+        },
     }
-    return by_type, by_orbit, freshness
+    cache.set("stats", result, ttl)
+    return result
 
 
-def stats(db: Session) -> dict[str, Any]:
-    by_type, by_orbit, freshness = _aggregates(db)
-    total = sum(by_type.values())
-    conjunction_count = db.scalar(select(func.count()).select_from(Conjunction))
-    high_risk_count = db.scalar(
-        select(func.count()).select_from(Conjunction).where(tier_filter("high"))
-    )
-    reason = None
-    if not total:
-        reason = "Satellite catalogue has no records."
-    return {
-        "total_satellites": total,
-        "satellites_by_object_type": by_type,
-        "satellites_by_orbit_class": by_orbit,
-        "conjunction_count": int(conjunction_count or 0),
-        "high_risk_conjunctions": int(high_risk_count or 0),
-        "data_freshness": freshness,
-        "reason": reason,
-    }
-
-
-def analytics(db: Session, period: str) -> dict[str, Any]:
-    by_type, by_orbit, freshness = _aggregates(db)
-    start = datetime.now(timezone.utc) - timedelta(days=_PERIOD_DAYS[period])
-    rows = db.scalars(
-        select(Conjunction).where(Conjunction.tca >= start).order_by(Conjunction.tca)
-    ).all()
-    daily: dict[tuple[datetime, str], int] = {}
-    for row in rows:
-        day = row.tca.replace(hour=0, minute=0, second=0, microsecond=0)
+def get_analytics(db: Session, period: str, ttl: int) -> dict:
+    cache_key = f"analytics:{period}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    data = statistics_data(db)
+    days = PERIOD_DAYS[period]
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    daily: dict[str, dict[str, int]] = {}
+    for row in conjunction_daily_data(db, since):
+        day = row.day.isoformat() if hasattr(row.day, "isoformat") else str(row.day)
+        tiers = daily.setdefault(day, {"low": 0, "medium": 0, "high": 0, "total": 0})
         tier = risk_tier(row.max_prob, row.min_range_km, row.is_constellation_artifact)
-        daily[(day, tier)] = daily.get((day, tier), 0) + 1
-    reason = None
-    if not by_type:
-        reason = "Satellite catalogue has no records."
-    elif not rows:
-        reason = f"No conjunction records are available for period {period}."
-    return {
+        tiers[tier] += row.count
+        tiers["total"] += row.count
+    result = {
         "period": period,
-        "satellites_by_object_type": by_type or None,
-        "satellites_by_orbit_class": by_orbit or None,
+        "generated_at": datetime.now(timezone.utc),
         "conjunctions_per_day": [
-            {"date": day, "risk_tier": tier, "count": count}
-            for (day, tier), count in sorted(daily.items())
-        ] if rows else None,
-        "data_freshness": freshness,
-        "reason": reason,
+            {"date": day, **daily[day]} for day in sorted(daily)
+        ] or None,
+        "counts_by_object_type": data["by_type"] or None,
+        "counts_by_orbit_class": (
+            data["by_orbit"] if sum(data["by_orbit"].values()) else None
+        ),
+        "data_freshness": {
+            "gp_fetched_at": data["gp_fresh"],
+            "conjunctions_fetched_at": data["conjunction_fresh"],
+        },
+        "unavailable_reasons": {
+            **({"conjunctions_per_day": "No conjunction records in this period."} if not daily else {}),
+            **({"orbit_class": "No orbital elements are available."} if not sum(data["by_orbit"].values()) else {}),
+        },
     }
+    cache.set(cache_key, result, ttl)
+    return result
+
+
+def get_conjunction_summary(db: Session, ttl: int) -> dict:
+    cached = cache.get("conjunction-summary")
+    if cached is not None:
+        return cached
+    now = datetime.now(timezone.utc)
+    result = {
+        "generated_at": now,
+        "basis": "predicted, not observed",
+        "all": catalog.conjunction_summary_counts(db),
+        "next_7_days": catalog.conjunction_summary_counts(
+            db,
+            tca_from=now,
+            tca_to=now + timedelta(days=7),
+        ),
+    }
+    cache.set("conjunction-summary", result, ttl)
+    return result
+
+
+def get_meta(db: Session, api_version: str, ttl: int) -> dict:
+    cache_key = f"meta:{api_version}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    result = {
+        "api_version": api_version,
+        "generated_at": datetime.now(timezone.utc),
+        "data_freshness": catalog.meta_snapshot(db),
+        "data_basis": {
+            "conjunctions": "SOCRATES predictions, not observed collisions.",
+            "max_prob": "A secondary SOCRATES estimate, never a real collision probability.",
+            "anomalies": "Unusual orbit profile, not maneuver detection.",
+            "orbit_class": "Approximate classification derived from orbital elements.",
+            "timestamps": "All timestamps are UTC.",
+        },
+    }
+    cache.set(cache_key, result, ttl)
+    return result
