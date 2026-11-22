@@ -139,7 +139,7 @@ def satellites_live(limit: int = Query(default=500, ge=1, le=500)):
                   ) AS rn
                   FROM gp_history gp
                 )
-                SELECT l.norad_cat_id, s.object_name,
+                SELECT l.norad_cat_id, s.object_name, COALESCE(s.object_type,'UNKNOWN') AS object_type,
                        l.epoch, l.mean_motion, l.eccentricity, l.inclination,
                        l.ra_of_asc_node, l.arg_of_pericenter, l.mean_anomaly,
                        l.bstar, l.mean_motion_dot,
@@ -157,6 +157,7 @@ def satellites_live(limit: int = Query(default=500, ge=1, le=500)):
     satrecs = []
     names = []
     ids = []
+    types = []
     for row in rows:
         try:
             record = {
@@ -177,6 +178,7 @@ def satellites_live(limit: int = Query(default=500, ge=1, le=500)):
             satrecs.append(satrec_from_gp(record))
             names.append(row["object_name"] or "")
             ids.append(row["norad_cat_id"])
+            types.append(row["object_type"])
         except (LookupError, ValueError):
             continue
     if not satrecs:
@@ -206,6 +208,7 @@ def satellites_live(limit: int = Query(default=500, ge=1, le=500)):
                 LivePosition(
                     norad_id=ids[index],
                     name=names[index],
+                    object_type=types[index],
                     latitude=float(subpoint.latitude.degrees),
                     longitude=float(subpoint.longitude.degrees),
                     altitude_km=float(subpoint.elevation.km),
@@ -289,6 +292,17 @@ def derive_tier(row) -> str:
     return "low"
 
 
+TIER_SQL = """
+CASE
+  WHEN is_constellation_artifact THEN 'low'
+  WHEN COALESCE(max_prob,0) >= 1e-3
+    OR (COALESCE(max_prob,0) >= 1e-5 AND COALESCE(min_range_km,999) <= 50) THEN 'high'
+  WHEN COALESCE(max_prob,0) >= 1e-5 THEN 'medium'
+  ELSE 'low'
+END
+"""  # mirrors derive_tier() so filtering/counting can happen in SQL
+
+
 @app.get("/conjunctions", response_model=ConjunctionListResponse)
 def conjunctions(
     risk: str | None = None,
@@ -310,6 +324,8 @@ def conjunctions(
     if risk:
         if risk.lower() not in {"low", "medium", "high"}:
             raise HTTPException(status_code=422, detail="risk must be low, medium, or high")
+        clauses.append(f"({TIER_SQL}) = :risk")
+        params["risk"] = risk.lower()
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     with create_database_engine().connect() as connection:
         rows = connection.execute(
@@ -365,10 +381,9 @@ def stats():
         conjunction_count = int(connection.execute(text("SELECT count(*) FROM conjunctions")).scalar_one())
         gp_fresh = connection.execute(text("SELECT max(fetched_at) FROM gp_history")).scalar()
         socrates_fresh = connection.execute(text("SELECT max(fetched_at) FROM conjunctions")).scalar()
-        artifact_rows = connection.execute(
-            text("SELECT max_prob, min_range_km, is_constellation_artifact FROM conjunctions")
-        ).mappings().all()
-    high_risk = sum(1 for row in artifact_rows if derive_tier(row) == "high")
+        high_risk = int(connection.execute(
+            text(f"SELECT count(*) FROM conjunctions WHERE ({TIER_SQL}) = 'high'")
+        ).scalar_one())
     return StatsResponse(
         model_version=MODEL_VERSION,
         generated_at=now(),
