@@ -28,6 +28,9 @@ def get_database_url() -> str:
             "DATABASE_URL is not set. Configure ml/.env; database credentials "
             "must never be hardcoded."
         )
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+        
     return url
 
 
