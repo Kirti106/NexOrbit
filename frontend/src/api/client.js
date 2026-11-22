@@ -10,6 +10,7 @@ const get = (path, params) => http.get(path, { params }).then((res) => res.data)
 export const getHealth = () => get("/health");
 export const getStats = () => get("/stats");
 export const getLiveSatellites = (limit = 500) => get("/satellites/live", { limit });
+export const getLivePositions = (limit = 500) => get("/satellites/live", { limit });
 export const searchSatellites = ({ q, type, limit = 100 } = {}) =>
   get("/satellites", { q: q || undefined, type: type || undefined, limit });
 export const getPosition = (noradId) => get(`/satellites/${noradId}/position`);
