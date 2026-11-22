@@ -1,10 +1,30 @@
 import "./Hero.css";
 import { ArrowUpRight, Globe2, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
 import OrbitalGlobe from "./OrbitalGlobe";
 
 function Hero() {
+  const [stats, setStats] = useState(null);
+  const [live, setLive] = useState([]);
+
+  useEffect(() => {
+    const baseUrl = import.meta.env.VITE_ML_API_URL || "http://localhost:8001";
+    Promise.allSettled([
+      fetch(`${baseUrl}/stats`).then((response) => response.ok ? response.json() : null),
+      fetch(`${baseUrl}/satellites/live?limit=3`).then((response) => response.ok ? response.json() : null),
+    ]).then(([statsResult, liveResult]) => {
+      if (statsResult.status === "fulfilled" && statsResult.value) {
+        setStats(statsResult.value);
+      }
+      if (liveResult.status === "fulfilled" && liveResult.value) {
+        setLive(liveResult.value.items || []);
+      }
+    });
+  }, []);
+
   return (
     <section className="hero-section">
+      <div className="hero-grid-overlay"></div>
 
       <div className="hero-content">
         <div className="hero-status">
@@ -62,7 +82,36 @@ function Hero() {
           ORBITAL VIEW <br />
           <span>3D VISUALISATION</span>
         </div>
+
+        {live.length > 0 && (
+          <div className="hero-live-stack">
+            <p>LIVE PROPAGATION</p>
+            {live.map((item) => (
+              <div className="hero-live-row" key={item.norad_id}>
+                <span>{item.name}</span>
+                <strong>{item.altitude_km.toFixed(0)} km</strong>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {stats && (
+        <div className="hero-console-strip">
+          <div>
+            <span>TRACKED</span>
+            <strong>{stats.tracked_satellites.toLocaleString()}</strong>
+          </div>
+          <div>
+            <span>CONJUNCTIONS</span>
+            <strong>{stats.conjunctions.toLocaleString()}</strong>
+          </div>
+          <div>
+            <span>HIGH RISK</span>
+            <strong>{stats.high_risk_conjunctions.toLocaleString()}</strong>
+          </div>
+        </div>
+      )}
 
     </section>
   );

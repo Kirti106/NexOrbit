@@ -12,6 +12,18 @@
     linear-gradient(110deg, #070a0c 15%, #0b1422 100%);
 }
 
+.hero-grid-overlay {
+  position: absolute;
+  inset: 0;
+  opacity: 0.18;
+  background-image:
+    linear-gradient(rgba(101,185,255,.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(101,185,255,.12) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: linear-gradient(90deg, transparent 5%, #000 55%, transparent 100%);
+  pointer-events: none;
+}
+
 .hero-content {
   position: relative;
   z-index: 3;
@@ -245,4 +257,158 @@
 .hero-globe .cesium-viewer {
   position: absolute;
   inset: 0;
+}
+
+.hero-live-stack {
+  position: absolute;
+  left: 2%;
+  bottom: 7%;
+  width: 210px;
+  padding: 12px;
+  border: 1px solid rgba(157, 221, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(5, 12, 20, 0.78);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
+}
+
+.hero-live-stack p {
+  margin-bottom: 8px;
+  color: #65b9ff;
+  font-size: 8px;
+  letter-spacing: 1.5px;
+}
+
+.hero-live-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  color: #a9bacb;
+  font-size: 9px;
+}
+
+.hero-live-row strong {
+  color: #e8f1fa;
+  font-weight: 500;
+}
+
+.hero-console-strip {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 18px;
+  z-index: 5;
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 150px));
+  gap: 1px;
+  border: 1px solid rgba(157, 221, 255, 0.16);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(157, 221, 255, 0.12);
+  backdrop-filter: blur(14px);
+}
+
+.hero-console-strip div {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 10px 16px;
+  background: rgba(7, 13, 22, 0.88);
+}
+
+.hero-console-strip span {
+  color: #8090a3;
+  font-size: 8px;
+  letter-spacing: 1.3px;
+}
+
+.hero-console-strip strong {
+  margin-top: 4px;
+  color: #cfeeff;
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.orbital-fallback {
+  display: grid;
+  place-items: center;
+  color: #65b9ff;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  background:
+    radial-gradient(circle at 50% 50%, #1d5271 0, #0a1a2a 38%, #05080d 70%);
+}
+
+.fallback-earth {
+  position: relative;
+  width: 68%;
+  aspect-ratio: 1;
+  border: 1px solid rgba(177, 226, 255, 0.5);
+  border-radius: 50%;
+  box-shadow:
+    inset -34px -12px 50px rgba(0, 0, 0, 0.75),
+    inset 18px 5px 28px rgba(128, 206, 255, 0.25),
+    0 0 45px rgba(101, 185, 255, 0.22);
+  background:
+    radial-gradient(ellipse at 35% 35%, rgba(141, 191, 153, 0.8), transparent 18%),
+    linear-gradient(145deg, #19465e, #091823);
+  animation: earthPulse 5s ease-in-out infinite;
+}
+
+.fallback-orbit {
+  position: absolute;
+  inset: 20%;
+  border: 1px solid rgba(157, 221, 255, 0.55);
+  border-radius: 50%;
+  transform: rotate(-24deg) scaleX(1.45);
+}
+
+.orbit-two {
+  transform: rotate(31deg) scaleX(1.55);
+  opacity: 0.45;
+}
+
+.fallback-satellite {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border: 1px solid #dff5ff;
+  border-radius: 50%;
+  background: #65b9ff;
+  box-shadow: 0 0 12px #65b9ff;
+}
+
+.sat-one {
+  top: 18%;
+  right: 4%;
+}
+
+.sat-two {
+  bottom: 21%;
+  left: 6%;
+}
+
+@keyframes earthPulse {
+  50% {
+    transform: scale(1.015);
+    filter: brightness(1.08);
+  }
+}
+
+@media (max-width: 850px) {
+  .hero-live-stack {
+    display: none;
+  }
+
+  .hero-console-strip {
+    position: relative;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    grid-column: 1;
+    margin: -10px 7% 24px;
+  }
 }

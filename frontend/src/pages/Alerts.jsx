@@ -5,7 +5,6 @@ import {
   Search,
   ShieldAlert,
   Clock,
-  Activity,
   X,
   ArrowUpRight,
 } from "lucide-react";

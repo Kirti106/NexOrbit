@@ -2,7 +2,8 @@
   min-height: 100vh;
   color: #edf1ed;
   background: #080d0f;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: visible;
 }
 
 /* FLEET SECTION */

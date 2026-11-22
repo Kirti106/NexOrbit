@@ -2,11 +2,12 @@ import {
   Satellite, Radio, AlertTriangle, Orbit, Activity,
   ShieldCheck, ArrowUpRight, Globe2,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import Hero from "../components/Hero";
 import "./Overview.css";
 
-const fleetStats = [
+const fleetStatsTemplate = [
   {
     label: "TRACKED OBJECTS",
     value: "Awaiting data",
@@ -34,6 +35,33 @@ const fleetStats = [
 ];
 
 function Overview() {
+  const [fleetStats, setFleetStats] = useState(fleetStatsTemplate);
+  const [dataStatus, setDataStatus] = useState("DATA CONNECTION PENDING");
+
+  useEffect(() => {
+    const baseUrl = import.meta.env.VITE_ML_API_URL || "http://localhost:8001";
+    fetch(`${baseUrl}/stats`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((stats) => {
+        if (!stats) return;
+        setDataStatus("ML TELEMETRY LIVE");
+        setFleetStats([
+          { ...fleetStatsTemplate[0], value: stats.tracked_satellites.toLocaleString() },
+          {
+            ...fleetStatsTemplate[1],
+            value: (stats.satellites_by_object_type.PAYLOAD || 0).toLocaleString(),
+          },
+          {
+            ...fleetStatsTemplate[2],
+            value: (stats.satellites_by_object_type.DEBRIS ||
+              stats.satellites_by_object_type.UNKNOWN || 0).toLocaleString(),
+          },
+          { ...fleetStatsTemplate[3], value: stats.conjunctions.toLocaleString() },
+        ]);
+      })
+      .catch(() => setDataStatus("DATA CONNECTION PENDING"));
+  }, []);
+
   return (
     <>
       <Hero />
@@ -50,7 +78,7 @@ function Overview() {
 
           <div className="section-status">
             <span className="status-indicator"></span>
-            DATA CONNECTION PENDING
+            {dataStatus}
           </div>
         </div>
 

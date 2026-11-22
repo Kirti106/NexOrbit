@@ -1,17 +1,35 @@
-from pathlib import Path
-import os
+from functools import lru_cache
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_ROOT / "data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    f"sqlite:///{(DATA_DIR / 'nexorbit.db').as_posix()}",
-)
 
-# React's Vite development server.
-FRONTEND_ORIGINS = os.getenv(
-    "FRONTEND_ORIGINS",
-    "http://localhost:5173",
-).split(",")
+class Settings(BaseSettings):
+    database_url: str = (
+        "postgresql+psycopg2://root:change-me-please@localhost:5432/nexorbit"
+    )
+    cors_origins: str = "http://localhost:5173"
+    ml_api_url: str = "http://localhost:8001"
+    admin_api_key: str = ""
+    cache_ttl: int = 8
+    scheduler_enabled: bool = False
+    socrates_url: str | None = None
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
+    )
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [
+            origin.strip()
+            for origin in self.cors_origins.split(",")
+            if origin.strip()
+        ]
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
