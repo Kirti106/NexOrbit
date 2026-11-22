@@ -1,26 +1,20 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Satellite
+from ..services.analytics import analytics, stats
 
 router = APIRouter(prefix="/api/analytics", tags=["Analytics"])
 
 
 @router.get("")
-def get_analytics(db: Session = Depends(get_db)):
-    total = db.scalar(select(func.count()).select_from(Satellite)) or 0
+def get_analytics(
+    period: str = Query(default="30D", pattern="^(7D|30D|90D|1Y)$"),
+    db: Session = Depends(get_db),
+):
+    return analytics(db, period)
 
-    return {
-        "total_objects": total,
-        "active_satellites": None,
-        "debris_objects": None,
-        "upcoming_conjunctions": None,
-        "data_status": "loaded" if total else "empty",
-        "note": (
-            "The initial CelesTrak import does not classify every object as active "
-            "or debris and does not calculate conjunction probability. Those fields "
-            "are null until validated classification and screening modules are added."
-        ),
-    }
+
+@router.get("/stats")
+def get_stats(db: Session = Depends(get_db)):
+    return stats(db)

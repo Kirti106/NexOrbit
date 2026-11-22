@@ -14,24 +14,18 @@ From a fresh clone:
 ```powershell
 cd NexOrbit
 Copy-Item .env.example .env
-Copy-Item ml/.env.example ml/.env
 docker compose up --build -d
 
-# Apply migrations from the same PowerShell directory.
-Get-Content ml/db/migrations/001_create_ml_tables.sql -Raw |
-  docker exec -i nexorbit_db psql -U root -d nexorbit -v ON_ERROR_STOP=1
-Get-Content ml/db/migrations/002_compat_satellites_catalog.sql -Raw |
-  docker exec -i nexorbit_db psql -U root -d nexorbit -v ON_ERROR_STOP=1
-Get-Content ml/db/migrations/003_real_sample_compat.sql -Raw |
-  docker exec -i nexorbit_db psql -U root -d nexorbit -v ON_ERROR_STOP=1
-
-# Prefer a dump from a prepared machine. Otherwise load samples:
-.\ml\scripts\load_samples.ps1
-
-# Restart the API after migrations/load.
-docker compose restart ml_api
-Start-Process http://localhost:8001/docs
+Set-Location frontend
+npm install
+npm run dev
 ```
+
+Compose applies the database migrations and loads the checked-in sample
+datasets when the database is empty. The integrated frontend is served at
+`http://localhost:5173`, the backend at `http://localhost:8000`, and this ML API
+at `http://localhost:8001`. The frontend calls the backend through Vite's
+`/api` proxy; the backend proxies propagation requests to the ML API.
 
 ## 3. API contract
 
@@ -106,8 +100,9 @@ Rebuild without an existing dump:
 | `DATABASE_URL` | Host-side SQLAlchemy PostgreSQL URL | `postgresql+psycopg2://root:fake_password@127.0.0.1:5432/nexorbit` |
 | `CORS_ORIGINS` | Comma-separated frontend origins | `http://localhost:5173` |
 | `POSTGRES_DB` | Compose database name | `nexorbit` |
-| `POSTGRES_USER` | Compose database role | `root` |
-| `POSTGRES_PASSWORD` | Compose database password | `fake_password` |
+| `POSTGRES_USER` | Compose database role | `nexorbit` |
+| `POSTGRES_PASSWORD` | Compose database password | `change_me` |
+| `ML_API_URL` | Backend-to-ML service URL | `http://ml_api:8001` |
 
 ## 6. Data semantics
 

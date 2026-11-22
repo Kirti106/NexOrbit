@@ -20,9 +20,7 @@ def list_satellites(
         match = f"%{q}%"
         statement = statement.where(
             or_(
-                Satellite.name.ilike(match),
                 Satellite.object_name.ilike(match),
-                cast(Satellite.norad_id, String).ilike(match),
                 cast(Satellite.norad_cat_id, String).ilike(match),
             )
         )
@@ -50,7 +48,7 @@ def list_satellites(
             )
             .where(
                 GPHistory.norad_cat_id
-                == func.coalesce(Satellite.norad_cat_id, Satellite.norad_id)
+                == Satellite.norad_cat_id
             )
             .limit(1)
             .scalar_subquery()
@@ -62,9 +60,10 @@ def list_satellites(
         }
         statement = statement.where(boundaries[orbit_class])
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
-    name_col = func.coalesce(Satellite.name, Satellite.object_name)
     statement = statement.order_by(
-        name_col.desc() if sort == "name_desc" else name_col.asc()
+        Satellite.object_name.desc()
+        if sort == "name_desc"
+        else Satellite.object_name.asc()
     )
     items = list(db.scalars(statement.offset(offset).limit(limit)).all())
     return int(total), items
@@ -72,10 +71,7 @@ def list_satellites(
 
 def get_satellite(db: Session, norad_id: int) -> Satellite | None:
     return db.scalar(
-        select(Satellite).where(
-            (Satellite.norad_id == norad_id)
-            | (Satellite.norad_cat_id == norad_id)
-        )
+        select(Satellite).where(Satellite.norad_cat_id == norad_id)
     )
 
 

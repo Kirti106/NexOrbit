@@ -8,7 +8,7 @@ from typing import Any
 
 import requests
 
-from ..utils.storage import session_scope, upsert_gp_history
+from ..utils.storage import ensure_satellite_stubs, session_scope, upsert_gp_history
 from .base import DataSource
 
 GP_FIELDS = {
@@ -109,12 +109,20 @@ class CelestrakGpSource(DataSource):
 
     def load(self, data: list[dict[str, Any]]) -> int:
         rows = []
+        satellite_stubs = []
         fetched_at = datetime.now(timezone.utc)
         for record in data:
             try:
+                norad_cat_id = int(record["NORAD_CAT_ID"])
+                satellite_stubs.append(
+                    {
+                        "norad_cat_id": norad_cat_id,
+                        "object_name": str(record["OBJECT_NAME"]).strip() or None,
+                    }
+                )
                 rows.append(
                     {
-                        "norad_cat_id": int(record["NORAD_CAT_ID"]),
+                        "norad_cat_id": norad_cat_id,
                         "epoch": utc_datetime(str(record["EPOCH"])),
                         "mean_motion": float(record["MEAN_MOTION"]),
                         "eccentricity": float(record["ECCENTRICITY"]),
@@ -133,4 +141,5 @@ class CelestrakGpSource(DataSource):
             except (KeyError, TypeError, ValueError) as exc:
                 raise ValueError(f"Invalid CelesTrak GP record: {record}") from exc
         with session_scope() as session:
+            ensure_satellite_stubs(session, satellite_stubs)
             return upsert_gp_history(session, rows)

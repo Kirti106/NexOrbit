@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..models import Conjunction, GPHistory, Satellite
-from .risk import risk_tier
+from .risk import risk_tier, tier_filter
 
 _PERIOD_DAYS = {"7D": 7, "30D": 30, "90D": 90, "1Y": 365}
 
@@ -23,7 +23,7 @@ def _orbit_class(mean_motion: float | None) -> str | None:
 def _aggregates(db: Session) -> tuple[dict[str, int], dict[str, int], dict[str, datetime | None]]:
     types = db.execute(
         select(func.coalesce(Satellite.object_type, "UNKNOWN"), func.count())
-        .group_by(func.coalesce(Satellite.object_type, "UNKNOWN"))
+        .group_by(Satellite.object_type)
     ).all()
     by_type = {str(kind).upper(): int(count) for kind, count in types}
     latest_epoch = (
@@ -55,6 +55,9 @@ def stats(db: Session) -> dict[str, Any]:
     by_type, by_orbit, freshness = _aggregates(db)
     total = sum(by_type.values())
     conjunction_count = db.scalar(select(func.count()).select_from(Conjunction))
+    high_risk_count = db.scalar(
+        select(func.count()).select_from(Conjunction).where(tier_filter("high"))
+    )
     reason = None
     if not total:
         reason = "Satellite catalogue has no records."
@@ -63,6 +66,7 @@ def stats(db: Session) -> dict[str, Any]:
         "satellites_by_object_type": by_type,
         "satellites_by_orbit_class": by_orbit,
         "conjunction_count": int(conjunction_count or 0),
+        "high_risk_conjunctions": int(high_risk_count or 0),
         "data_freshness": freshness,
         "reason": reason,
     }

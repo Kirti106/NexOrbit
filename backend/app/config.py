@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str = (
-        "postgresql+psycopg2://root:change-me-please@localhost:5432/nexorbit"
+        "postgresql+psycopg://root:change-me-please@localhost:5432/nexorbit"
     )
     cors_origins: str = "http://localhost:5173"
     ml_api_url: str = "http://localhost:8001"

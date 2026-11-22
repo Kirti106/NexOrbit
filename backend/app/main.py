@@ -2,11 +2,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import models  # noqa: F401 - registers SQLAlchemy models
-from .config import FRONTEND_ORIGINS
+from .config import get_settings
 from .database import Base, engine
-from .routers import analytics, satellites
+from .routers import analytics, conjunctions, satellites
 
 Base.metadata.create_all(bind=engine)
+settings = get_settings()
 
 app = FastAPI(
     title="NexOrbit API",
@@ -19,7 +20,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=FRONTEND_ORIGINS,
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -27,6 +28,7 @@ app.add_middleware(
 
 app.include_router(satellites.router)
 app.include_router(analytics.router)
+app.include_router(conjunctions.router)
 
 
 @app.get("/", tags=["System"])

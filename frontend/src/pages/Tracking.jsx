@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Search,
   Satellite,
@@ -11,109 +10,82 @@ import {
   Crosshair,
 } from "lucide-react";
 
+import { getSatellite, getSatellites } from "../api/client";
 import "./Tracking.css";
 
-const satellites = [
-  {
-    name: "ISS (ZARYA)",
-    noradId: "25544",
-    orbit: "LEO",
-    altitude: "408 km",
-    period: "92.7 minutes",
-    inclination: "51.6°",
-    eccentricity: "0.0006",
-    launchDate: "20 November 1998",
-    status: "Active",
-    purpose: "Crewed research station",
-  },
-  {
-    name: "NOAA 19",
-    noradId: "33591",
-    orbit: "LEO",
-    altitude: "870 km",
-    period: "102 minutes",
-    inclination: "99.2°",
-    eccentricity: "0.0012",
-    launchDate: "6 February 2009",
-    status: "Active",
-    purpose: "Weather observation",
-  },
-  {
-    name: "TERRA",
-    noradId: "25994",
-    orbit: "LEO",
-    altitude: "705 km",
-    period: "99 minutes",
-    inclination: "98.2°",
-    eccentricity: "0.0001",
-    launchDate: "18 December 1999",
-    status: "Active",
-    purpose: "Earth observation",
-  },
-  {
-    name: "GPS BIIR-2",
-    noradId: "24876",
-    orbit: "MEO",
-    altitude: "20,200 km",
-    period: "11 hours 58 minutes",
-    inclination: "55°",
-    eccentricity: "0.010",
-    launchDate: "23 July 1997",
-    status: "Active",
-    purpose: "Navigation",
-  },
-  {
-    name: "GOES 16",
-    noradId: "41866",
-    orbit: "GEO",
-    altitude: "35,786 km",
-    period: "23 hours 56 minutes",
-    inclination: "0.05°",
-    eccentricity: "0.0001",
-    launchDate: "19 November 2016",
-    status: "Active",
-    purpose: "Weather monitoring",
-  },
-  {
-    name: "GOES 18",
-    noradId: "51850",
-    orbit: "GEO",
-    altitude: "35,786 km",
-    period: "23 hours 56 minutes",
-    inclination: "0.05°",
-    eccentricity: "0.0001",
-    launchDate: "1 March 2022",
-    status: "Active",
-    purpose: "Weather monitoring",
-  },
-];
-
 const filters = ["ALL", "LEO", "MEO", "GEO"];
+
+function display(value, suffix = "") {
+  return value == null ? "—" : `${value}${suffix}`;
+}
+
+function date(value) {
+  return value ? new Date(value).toLocaleDateString() : "—";
+}
 
 function Tracking() {
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState("ALL");
+  const [selectedId, setSelectedId] = useState(null);
   const [selectedSatellite, setSelectedSatellite] = useState(null);
-
-  const filteredSatellites = satellites.filter((satellite) => {
-    const matchesSearch =
-      satellite.name.toLowerCase().includes(search.toLowerCase()) ||
-      satellite.noradId.includes(search);
-
-    const matchesOrbit =
-      activeFilter === "ALL" || satellite.orbit === activeFilter;
-
-    return matchesSearch && matchesOrbit;
+  const [catalogueResult, setCatalogueResult] = useState({
+    query: null,
+    data: { total: 0, items: [] },
+    error: "",
   });
+  const queryKey = `${search.trim()}|${activeFilter}`;
+  const loading = catalogueResult.query !== queryKey;
+  const error = catalogueResult.query === queryKey ? catalogueResult.error : "";
+  const catalogue = catalogueResult.data;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getSatellites({
+      q: search.trim(),
+      orbit_class: activeFilter === "ALL" ? "" : activeFilter,
+      limit: "100",
+      offset: "0",
+    }, { signal: controller.signal })
+      .then((response) => setCatalogueResult({ query: queryKey, data: response, error: "" }))
+      .catch((requestError) => {
+        if (requestError.name !== "AbortError") {
+          setCatalogueResult({
+            query: queryKey,
+            data: { total: 0, items: [] },
+            error: requestError.message,
+          });
+        }
+      });
+    return () => controller.abort();
+  }, [search, activeFilter, queryKey]);
+
+  useEffect(() => {
+    if (selectedId == null) return undefined;
+    const controller = new AbortController();
+    getSatellite(selectedId, { signal: controller.signal })
+      .then(setSelectedSatellite)
+      .catch((requestError) => {
+        if (requestError.name !== "AbortError") {
+          setCatalogueResult((previous) => ({
+            ...previous,
+            error: requestError.message,
+          }));
+        }
+      });
+    return () => controller.abort();
+  }, [selectedId]);
+
+  const selectedDetails = selectedSatellite?.norad_id === selectedId
+    ? selectedSatellite
+    : null;
+  const elements = selectedDetails?.latest_orbital_elements;
 
   return (
     <div className="tracking-page">
       <div className="tracking-header">
         <p className="section-eyebrow">MISSION CONTROL / CATALOGUE</p>
         <h1>Satellite Tracking</h1>
-        <p>
-          Search, explore and inspect objects in Earth's orbital environment.
-        </p>
+        <p>Search, explore and inspect objects in Earth&apos;s orbital environment.</p>
       </div>
 
       <div className="tracking-toolbar">
@@ -131,9 +103,7 @@ function Tracking() {
           {filters.map((filter) => (
             <button
               key={filter}
-              className={`orbit-filter ${
-                activeFilter === filter ? "active" : ""
-              }`}
+              className={`orbit-filter ${activeFilter === filter ? "active" : ""}`}
               onClick={() => setActiveFilter(filter)}
             >
               {filter}
@@ -142,165 +112,121 @@ function Tracking() {
         </div>
       </div>
 
+      {error && <p className="no-satellites" role="alert">{error}</p>}
+
       <div className="tracking-layout">
         <div className="satellite-table-wrapper">
           <table className="satellite-table">
             <thead>
               <tr>
-                <th>SATELLITE</th>
+                <th>OBJECT</th>
                 <th>NORAD ID</th>
                 <th>ORBIT</th>
-                <th>ALTITUDE</th>
-                <th>STATUS</th>
+                <th>OBJECT TYPE</th>
+                <th>UPDATED</th>
               </tr>
             </thead>
-
             <tbody>
-              {filteredSatellites.map((satellite) => (
+              {catalogue.items.map((satellite) => (
                 <tr
-                  key={satellite.noradId}
-                  className={
-                    selectedSatellite?.noradId === satellite.noradId
-                      ? "selected-satellite"
-                      : ""
-                  }
-                  onClick={() => setSelectedSatellite(satellite)}
+                  key={satellite.norad_id}
+                  className={selectedId === satellite.norad_id ? "selected-satellite" : ""}
+                  onClick={() => setSelectedId(satellite.norad_id)}
                 >
                   <td>
                     <span className="satellite-name">
-                      <Satellite
-                        size={14}
-                        style={{
-                          display: "inline",
-                          marginRight: "9px",
-                          color: "#65b9ff",
-                        }}
-                      />
-                      {satellite.name}
+                      <Satellite size={14} style={{ display: "inline", marginRight: "9px", color: "#65b9ff" }} />
+                      {satellite.name || "Unnamed object"}
                     </span>
                   </td>
-                  <td>{satellite.noradId}</td>
-                  <td>
-                    <span className="tracking-badge">
-                      {satellite.orbit}
-                    </span>
-                  </td>
-                  <td>{satellite.altitude}</td>
-                  <td>
-                    <span className="satellite-status">
-                      ● {satellite.status}
-                    </span>
-                  </td>
+                  <td>{satellite.norad_id}</td>
+                  <td><span className="tracking-badge">{satellite.orbit_class || "—"}</span></td>
+                  <td>{satellite.object_type || "Unclassified"}</td>
+                  <td>{date(satellite.updated_at)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-
-          {filteredSatellites.length === 0 && (
-            <div className="no-satellites">
-              No satellites found. Try another search or filter.
-            </div>
+          {loading && <div className="no-satellites">Loading catalogue…</div>}
+          {!loading && catalogue.items.length === 0 && !error && (
+            <div className="no-satellites">No catalogue objects match this search.</div>
           )}
         </div>
 
-        {selectedSatellite && (
+        {selectedId != null && (
           <aside className="satellite-details">
             <div className="details-header">
               <div>
                 <p className="section-eyebrow">OBJECT IDENTIFICATION</p>
                 <h2>Satellite Details</h2>
               </div>
-
               <button
                 className="close-details"
-                onClick={() => setSelectedSatellite(null)}
+                onClick={() => setSelectedId(null)}
                 aria-label="Close satellite details"
               >
                 <X size={19} />
               </button>
             </div>
 
-            <div className="details-identity">
-              <div className="details-satellite-icon">
-                <Satellite size={30} />
-              </div>
-
-              <div>
-                <h3>{selectedSatellite.name}</h3>
-                <p>NORAD ID: {selectedSatellite.noradId}</p>
-              </div>
-            </div>
-
-            <div className="details-status-row">
-              <span className="tracking-badge">
-                {selectedSatellite.orbit}
-              </span>
-              <span className="satellite-status">
-                ● {selectedSatellite.status}
-              </span>
-            </div>
-
-            <div className="details-divider"></div>
-
-            <p className="details-section-label">ORBITAL PARAMETERS</p>
-
-            <div className="orbital-parameter-grid">
-              <div className="parameter-card">
-                <Orbit size={17} />
-                <span>Altitude</span>
-                <strong>{selectedSatellite.altitude}</strong>
-              </div>
-
-              <div className="parameter-card">
-                <Gauge size={17} />
-                <span>Orbital Period</span>
-                <strong>{selectedSatellite.period}</strong>
-              </div>
-
-              <div className="parameter-card">
-                <Crosshair size={17} />
-                <span>Inclination</span>
-                <strong>{selectedSatellite.inclination}</strong>
-              </div>
-
-              <div className="parameter-card">
-                <Radio size={17} />
-                <span>Eccentricity</span>
-                <strong>{selectedSatellite.eccentricity}</strong>
-              </div>
-            </div>
-
-            <div className="details-divider"></div>
-
-            <p className="details-section-label">MISSION INFORMATION</p>
-
-            <div className="mission-detail">
-              <Calendar size={17} />
-              <div>
-                <span>Launch Date</span>
-                <strong>{selectedSatellite.launchDate}</strong>
-              </div>
-            </div>
-
-            <div className="mission-detail">
-              <Satellite size={17} />
-              <div>
-                <span>Mission Type</span>
-                <strong>{selectedSatellite.purpose}</strong>
-              </div>
-            </div>
-
-            <p className="details-disclaimer">
-              Illustrative catalogue values for frontend development.
-              Not live orbital measurements.
-            </p>
+            {selectedDetails ? (
+              <>
+                <div className="details-identity">
+                  <div className="details-satellite-icon"><Satellite size={30} /></div>
+                  <div>
+                    <h3>{selectedDetails.name || "Unnamed object"}</h3>
+                    <p>NORAD ID: {selectedDetails.norad_id}</p>
+                  </div>
+                </div>
+                <div className="details-status-row">
+                  <span className="tracking-badge">{selectedDetails.orbit_class || "Orbit unknown"}</span>
+                  <span className="satellite-status">{selectedDetails.object_type || "Unclassified"}</span>
+                </div>
+                <div className="details-divider" />
+                <p className="details-section-label">LATEST ORBITAL ELEMENTS</p>
+                <div className="orbital-parameter-grid">
+                  <div className="parameter-card">
+                    <Orbit size={17} /><span>Apogee</span>
+                    <strong>{display(elements?.apogee_km, " km")}</strong>
+                  </div>
+                  <div className="parameter-card">
+                    <Gauge size={17} /><span>Orbital Period</span>
+                    <strong>{display(elements?.period_minutes, " min")}</strong>
+                  </div>
+                  <div className="parameter-card">
+                    <Crosshair size={17} /><span>Inclination</span>
+                    <strong>{display(elements?.inclination, "°")}</strong>
+                  </div>
+                  <div className="parameter-card">
+                    <Radio size={17} /><span>Eccentricity</span>
+                    <strong>{display(elements?.eccentricity)}</strong>
+                  </div>
+                </div>
+                <div className="details-divider" />
+                <p className="details-section-label">CATALOGUE INFORMATION</p>
+                <div className="mission-detail">
+                  <Calendar size={17} />
+                  <div><span>Launch Date</span><strong>{date(selectedDetails.launch_date)}</strong></div>
+                </div>
+                <div className="mission-detail">
+                  <Satellite size={17} />
+                  <div>
+                    <span>Country / Source</span>
+                    <strong>{selectedDetails.country || selectedDetails.mission_info?.source || "Not provided"}</strong>
+                  </div>
+                </div>
+                <p className="details-disclaimer">
+                  Orbital values are derived from the latest available GP element set.
+                  They are estimates, not precise state vectors.
+                </p>
+              </>
+            ) : <p className="no-satellites">Loading object details…</p>}
           </aside>
         )}
       </div>
 
       <p className="section-description" style={{ marginTop: "18px" }}>
-        Showing {filteredSatellites.length} of {satellites.length} sample
-        satellite records.
+        Showing {catalogue.items.length.toLocaleString()} of {catalogue.total.toLocaleString()} catalogue records.
       </p>
     </div>
   );

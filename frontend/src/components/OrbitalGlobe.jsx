@@ -7,17 +7,11 @@ import "cesium/Build/Cesium/Widgets/widgets.css";
 const token = import.meta.env.VITE_CESIUM_ION_TOKEN;
 
 function OrbitalGlobe({ satellites = [], onSatelliteSelect }) {
-  const error = token ? "" : "Cesium ion access token is missing.";
-
   useEffect(() => {
     if (!token) return;
 
     Ion.defaultAccessToken = token;
   }, []);
-
-  if (error) {
-    return <div className="cesium-error">{error}</div>;
-  }
 
   if (!token) {
     return (
@@ -52,12 +46,12 @@ function OrbitalGlobe({ satellites = [], onSatelliteSelect }) {
       >
         {satellites.map((satellite) => (
           <Entity
-            key={satellite.noradId}
+            key={satellite.noradId || satellite.norad_id}
             name={satellite.name}
             position={Cartesian3.fromDegrees(
-              satellite.lon,
-              satellite.lat,
-              300000
+              satellite.lon ?? satellite.longitude,
+              satellite.lat ?? satellite.latitude,
+              (satellite.altitude_km || 300) * 1000
             )}
             point={{
               pixelSize: 7,

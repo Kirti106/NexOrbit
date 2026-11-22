@@ -8,4 +8,9 @@ export default defineConfig({
     react(),
     cesium()
   ],
+  server: {
+    proxy: {
+      "/api": "http://localhost:8000",
+    },
+  },
 });

@@ -14,14 +14,14 @@ EARTH_RADIUS_KM = 6378.137
 
 
 def _norad_id(satellite: Satellite) -> int:
-    value = satellite.norad_cat_id or satellite.norad_id
+    value = satellite.norad_cat_id
     if value is None:
         raise ValueError("Satellite record has no NORAD identifier")
     return value
 
 
 def _name(satellite: Satellite) -> str:
-    return satellite.object_name or satellite.name or ""
+    return satellite.object_name or ""
 
 
 def _orbit_class(elements: GPHistory | None) -> str | None:

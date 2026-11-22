@@ -76,11 +76,9 @@ def upsert_gp_history(session: Session, rows: Iterable[Mapping[str, Any]]) -> in
             rev_at_epoch = EXCLUDED.rev_at_epoch,
             fetched_at = EXCLUDED.fetched_at
     """)
-    changed = 0
-    for row in rows:
-        session.execute(sql, dict(row))
-        changed += 1
-    return changed
+    return _execute_batches(
+        session, sql, rows, ("norad_cat_id", "epoch")
+    )
 
 
 def upsert_conjunctions(session: Session, rows: Iterable[Mapping[str, Any]]) -> int:
@@ -107,11 +105,12 @@ def upsert_conjunctions(session: Session, rows: Iterable[Mapping[str, Any]]) -> 
             risk_weight = EXCLUDED.risk_weight,
             fetched_at = EXCLUDED.fetched_at
     """)
-    changed = 0
-    for row in rows:
-        session.execute(sql, dict(row))
-        changed += 1
-    return changed
+    return _execute_batches(
+        session,
+        sql,
+        rows,
+        ("norad_cat_id_1", "norad_cat_id_2", "tca"),
+    )
 
 
 def insert_model_run(
@@ -165,11 +164,43 @@ def upsert_satellites(session: Session, rows: Iterable[Mapping[str, Any]]) -> in
             source = EXCLUDED.source,
             updated_at = NOW()
     """)
-    changed = 0
+    return _execute_batches(session, sql, rows, ("norad_cat_id",))
+
+
+def ensure_satellite_stubs(
+    session: Session, rows: Iterable[Mapping[str, Any]]
+) -> int:
+    sql = text("""
+        INSERT INTO satellites (norad_cat_id, object_name, object_type, source, updated_at)
+        VALUES (:norad_cat_id, :object_name, 'UNKNOWN', 'CelesTrak-GP', NOW())
+        ON CONFLICT (norad_cat_id) DO NOTHING
+    """)
+    return _execute_batches(session, sql, rows, ("norad_cat_id",))
+
+
+def _execute_batches(
+    session: Session,
+    statement,
+    rows: Iterable[Mapping[str, Any]],
+    key_columns: tuple[str, ...],
+    batch_size: int = 1000,
+) -> int:
+    received = 0
+    batch: dict[tuple[Any, ...], dict[str, Any]] = {}
+
+    def flush() -> None:
+        if batch:
+            session.execute(statement, list(batch.values()))
+            batch.clear()
+
     for row in rows:
-        session.execute(sql, dict(row))
-        changed += 1
-    return changed
+        values = dict(row)
+        batch[tuple(values[column] for column in key_columns)] = values
+        received += 1
+        if len(batch) >= batch_size:
+            flush()
+    flush()
+    return received
 
 
 def insert_prediction(

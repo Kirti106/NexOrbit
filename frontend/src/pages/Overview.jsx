@@ -1,66 +1,59 @@
 import {
-  Satellite, Radio, AlertTriangle, Orbit, Activity,
+  Satellite, AlertTriangle, Orbit, Activity,
   ShieldCheck, ArrowUpRight, Globe2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { getStats } from "../api/client";
 import Hero from "../components/Hero";
 import "./Overview.css";
 
-const fleetStatsTemplate = [
-  {
-    label: "TRACKED OBJECTS",
-    value: "Awaiting data",
-    description: "Satellite catalogue",
-    icon: Satellite,
-  },
-  {
-    label: "ACTIVE SATELLITES",
-    value: "Awaiting data",
-    description: "Operational spacecraft",
-    icon: Radio,
-  },
-  {
-    label: "ORBITAL DEBRIS",
-    value: "Awaiting data",
-    description: "Inactive objects and debris",
-    icon: Orbit,
-  },
-  {
-    label: "CLOSE APPROACHES",
-    value: "Awaiting data",
-    description: "Conjunction screening",
-    icon: AlertTriangle,
-  },
-];
-
 function Overview() {
-  const [fleetStats, setFleetStats] = useState(fleetStatsTemplate);
-  const [dataStatus, setDataStatus] = useState("DATA CONNECTION PENDING");
+  const [stats, setStats] = useState(null);
+  const [dataStatus, setDataStatus] = useState("CONNECTING TO API");
 
   useEffect(() => {
-    const baseUrl = import.meta.env.VITE_ML_API_URL || "http://localhost:8001";
-    fetch(`${baseUrl}/stats`)
-      .then((response) => (response.ok ? response.json() : null))
-      .then((stats) => {
-        if (!stats) return;
-        setDataStatus("ML TELEMETRY LIVE");
-        setFleetStats([
-          { ...fleetStatsTemplate[0], value: stats.tracked_satellites.toLocaleString() },
-          {
-            ...fleetStatsTemplate[1],
-            value: (stats.satellites_by_object_type.PAYLOAD || 0).toLocaleString(),
-          },
-          {
-            ...fleetStatsTemplate[2],
-            value: (stats.satellites_by_object_type.DEBRIS ||
-              stats.satellites_by_object_type.UNKNOWN || 0).toLocaleString(),
-          },
-          { ...fleetStatsTemplate[3], value: stats.conjunctions.toLocaleString() },
-        ]);
+    const controller = new AbortController();
+    getStats({ signal: controller.signal })
+      .then((response) => {
+        setStats(response);
+        setDataStatus(response.total_satellites ? "DATASET CONNECTED" : "DATASET EMPTY");
       })
-      .catch(() => setDataStatus("DATA CONNECTION PENDING"));
+      .catch((error) => {
+        if (error.name !== "AbortError") setDataStatus("API UNAVAILABLE");
+      });
+    return () => controller.abort();
   }, []);
+
+  const number = (value) => (
+    Number.isFinite(value) ? value.toLocaleString() : "—"
+  );
+  const fleetStats = [
+    {
+      label: "TRACKED OBJECTS",
+      value: number(stats?.total_satellites),
+      description: "Objects in the satellite catalogue",
+      icon: Satellite,
+    },
+    {
+      label: "CATALOG PAYLOADS",
+      value: number(stats?.satellites_by_object_type?.PAYLOAD),
+      description: "Payloads classified in SATCAT",
+      icon: Orbit,
+    },
+    {
+      label: "ORBITAL DEBRIS",
+      value: number(stats?.satellites_by_object_type?.DEBRIS),
+      description: "Objects classified as debris",
+      icon: Orbit,
+    },
+    {
+      label: "CLOSE APPROACHES",
+      value: number(stats?.conjunction_count),
+      description: "Predicted SOCRATES events",
+      icon: AlertTriangle,
+    },
+  ];
 
   return (
     <>

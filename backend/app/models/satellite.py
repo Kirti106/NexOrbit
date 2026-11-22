@@ -1,8 +1,9 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Float,
     Index,
@@ -18,24 +19,17 @@ from ..db.base import Base
 class Satellite(Base):
     __tablename__ = "satellites"
     __table_args__ = (
-        UniqueConstraint("norad_id", name="uq_satellites_norad_id"),
-        UniqueConstraint("norad_cat_id", name="uq_satellites_norad_cat_id"),
-        Index("ix_satellites_name", "name"),
+        Index("ix_satellites_object_name", "object_name"),
     )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    norad_id: Mapped[int | None] = mapped_column(BigInteger)
-    name: Mapped[str | None] = mapped_column(String(255))
-    object_type: Mapped[str | None] = mapped_column(String(50))
-    country: Mapped[str | None] = mapped_column(String(100))
-    status: Mapped[str | None] = mapped_column(String(50))
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    norad_cat_id: Mapped[int | None] = mapped_column(BigInteger)
+    norad_cat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     object_name: Mapped[str | None] = mapped_column(String(255))
     object_id: Mapped[str | None] = mapped_column(String(100))
+    object_type: Mapped[str | None] = mapped_column(String(50))
+    country: Mapped[str | None] = mapped_column(String(100))
     owner_country: Mapped[str | None] = mapped_column(String(100))
-    launch_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    decay_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    launch_date: Mapped[date | None] = mapped_column(Date)
+    decay_date: Mapped[date | None] = mapped_column(Date)
     rcs_size: Mapped[str | None] = mapped_column(String(50))
     decay_status: Mapped[str | None] = mapped_column(String(50))
     line1: Mapped[str | None] = mapped_column(String(100))

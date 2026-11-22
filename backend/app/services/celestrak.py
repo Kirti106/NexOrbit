@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from threading import Lock
 
 import httpx
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -82,19 +82,11 @@ def sync_tle_group(db: Session, group: str = "active") -> tuple[int, int, bool]:
                 logger.warning("Skipping malformed CelesTrak TLE record")
                 continue
             satellite = db.scalar(
-                select(Satellite).where(
-                    or_(
-                        Satellite.norad_cat_id == norad_id,
-                        Satellite.norad_id == norad_id,
-                    )
-                )
+                select(Satellite).where(Satellite.norad_cat_id == norad_id)
             )
             if satellite is None:
-                satellite = Satellite()
+                satellite = Satellite(norad_cat_id=norad_id)
                 db.add(satellite)
-            satellite.norad_id = norad_id
-            satellite.norad_cat_id = norad_id
-            satellite.name = name[:255]
             satellite.object_name = name[:255]
             satellite.line1 = line1
             satellite.line2 = line2

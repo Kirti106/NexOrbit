@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -13,7 +13,6 @@ import {
   BarChart,
   Bar,
 } from "recharts";
-
 import {
   Activity,
   Satellite,
@@ -22,81 +21,60 @@ import {
   TrendingUp,
 } from "lucide-react";
 
+import { getAnalytics } from "../api/client";
 import "./Analytics.css";
 
-const orbitData = [
-  { name: "LEO", value: 65, color: "#65b9ff" },
-  { name: "MEO", value: 20, color: "#b794f6" },
-  { name: "GEO", value: 15, color: "#ffca72" },
-];
-
-
-const chartDataByPeriod = {
-  "7D": [
-    { name: "Mon", leo: 45, meo: 18, geo: 12 },
-    { name: "Tue", leo: 52, meo: 20, geo: 14 },
-    { name: "Wed", leo: 49, meo: 22, geo: 15 },
-    { name: "Thu", leo: 63, meo: 21, geo: 17 },
-    { name: "Fri", leo: 68, meo: 25, geo: 18 },
-    { name: "Sat", leo: 75, meo: 27, geo: 20 },
-    { name: "Sun", leo: 82, meo: 29, geo: 21 },
-  ],
-  "30D": [
-    { name: "Week 1", leo: 45, meo: 18, geo: 12 },
-    { name: "Week 2", leo: 52, meo: 20, geo: 14 },
-    { name: "Week 3", leo: 63, meo: 23, geo: 16 },
-    { name: "Week 4", leo: 75, meo: 27, geo: 20 },
-  ],
-  "90D": [
-    { name: "Month 1", leo: 45, meo: 18, geo: 12 },
-    { name: "Month 2", leo: 60, meo: 22, geo: 16 },
-    { name: "Month 3", leo: 78, meo: 28, geo: 21 },
-  ],
-  "1Y": [
-    { name: "Q1", leo: 45, meo: 18, geo: 12 },
-    { name: "Q2", leo: 58, meo: 21, geo: 15 },
-    { name: "Q3", leo: 72, meo: 25, geo: 19 },
-    { name: "Q4", leo: 88, meo: 32, geo: 24 },
-  ],
-};
-
-const activityDataByPeriod = {
-  "7D": [
-    { name: "Mon", objects: 42 },
-    { name: "Tue", objects: 55 },
-    { name: "Wed", objects: 48 },
-    { name: "Thu", objects: 68 },
-    { name: "Fri", objects: 61 },
-    { name: "Sat", objects: 78 },
-    { name: "Sun", objects: 72 },
-  ],
-  "30D": [
-    { name: "W1", objects: 45 },
-    { name: "W2", objects: 58 },
-    { name: "W3", objects: 64 },
-    { name: "W4", objects: 78 },
-  ],
-  "90D": [
-    { name: "M1", objects: 48 },
-    { name: "M2", objects: 65 },
-    { name: "M3", objects: 82 },
-  ],
-  "1Y": [
-    { name: "Q1", objects: 42 },
-    { name: "Q2", objects: 58 },
-    { name: "Q3", objects: 75 },
-    { name: "Q4", objects: 92 },
-  ],
-};
-
-
+const colors = { LEO: "#65b9ff", MEO: "#b794f6", GEO: "#ffca72" };
 const periods = ["7D", "30D", "90D", "1Y"];
 
 function Analytics() {
   const [period, setPeriod] = useState("30D");
+  const [result, setResult] = useState({ period: null, data: null, error: "" });
 
-  const populationData = chartDataByPeriod[period];
-  const activityData = activityDataByPeriod[period];
+  useEffect(() => {
+    const controller = new AbortController();
+    getAnalytics(period, { signal: controller.signal })
+      .then((response) => setResult({ period, data: response, error: "" }))
+      .catch((requestError) => {
+        if (requestError.name !== "AbortError") {
+          setResult({ period, data: null, error: requestError.message });
+        }
+      });
+    return () => controller.abort();
+  }, [period]);
+
+  const data = result.period === period ? result.data : null;
+  const error = result.period === period ? result.error : "";
+  const orbitData = useMemo(
+    () => Object.entries(data?.satellites_by_orbit_class || {})
+      .map(([name, value]) => ({ name, value, color: colors[name] || "#93a4b8" })),
+    [data],
+  );
+  const typeData = useMemo(
+    () => Object.entries(data?.satellites_by_object_type || {})
+      .map(([name, value]) => ({ name, value }))
+      .sort((left, right) => right.value - left.value)
+      .slice(0, 8),
+    [data],
+  );
+  const dailyData = useMemo(() => {
+    const grouped = new Map();
+    for (const event of data?.conjunctions_per_day || []) {
+      const day = event.date.slice(0, 10);
+      const item = grouped.get(day) || { name: day, high: 0, medium: 0, low: 0 };
+      item[event.risk_tier] = event.count;
+      grouped.set(day, item);
+    }
+    return [...grouped.values()];
+  }, [data]);
+
+  const totalObjects = Object.values(data?.satellites_by_object_type || {})
+    .reduce((total, count) => total + count, 0);
+  const conjunctionCount = dailyData.reduce(
+    (total, day) => total + day.high + day.medium + day.low,
+    0,
+  );
+  const totalOrbitObjects = orbitData.reduce((total, item) => total + item.value, 0);
 
   return (
     <div className="analytics-page">
@@ -104,54 +82,46 @@ function Analytics() {
         <div>
           <p className="section-eyebrow">MISSION CONTROL / DATA INTELLIGENCE</p>
           <h1>Orbital Analytics</h1>
-          <p>Explore orbital population, distribution and activity patterns.</p>
+          <p>Dataset-backed catalogue distribution and predicted conjunction activity.</p>
         </div>
-
-        <span className="analytics-demo-badge">
-          SIMULATED DATA
-        </span>
+        <span className="analytics-demo-badge">LIVE CATALOGUE DATA</span>
       </div>
 
       <div className="analytics-periods">
-        <span>TIME PERIOD</span>
+        <span>CONJUNCTION WINDOW</span>
         {periods.map((item) => (
-          <button
-            key={item}
-            className={period === item ? "active" : ""}
-            onClick={() => setPeriod(item)}
-          >
+          <button key={item} className={period === item ? "active" : ""} onClick={() => setPeriod(item)}>
             {item}
           </button>
         ))}
       </div>
 
+      {error && <p className="analytics-disclaimer" role="alert">{error}</p>}
+
       <div className="analytics-stats">
         <div className="analytics-stat-card">
           <Satellite />
-          <span>TRACKED OBJECTS</span>
-          <h2>24,580</h2>
-          <small><TrendingUp size={13} /> Demo catalogue</small>
+          <span>CATALOGUE OBJECTS</span>
+          <h2>{data ? totalObjects.toLocaleString() : "—"}</h2>
+          <small>SATCAT dataset</small>
         </div>
-
         <div className="analytics-stat-card">
           <Orbit />
-          <span>LEO POPULATION</span>
-          <h2>15,977</h2>
-          <small>65% of demo distribution</small>
+          <span>LEO OBJECTS</span>
+          <h2>{(data?.satellites_by_orbit_class?.LEO || 0).toLocaleString()}</h2>
+          <small>Latest available GP elements</small>
         </div>
-
         <div className="analytics-stat-card">
           <AlertTriangle />
-          <span>CONJUNCTION EVENTS</span>
-          <h2>128</h2>
-          <small>Illustrative event count</small>
+          <span>PREDICTED APPROACHES</span>
+          <h2>{conjunctionCount.toLocaleString()}</h2>
+          <small>SOCRATES events in selected window</small>
         </div>
-
         <div className="analytics-stat-card">
           <Activity />
-          <span>ORBITAL ACTIVITY</span>
-          <h2>72%</h2>
-          <small>Demo activity indicator</small>
+          <span>HIGH-RISK APPROACHES</span>
+          <h2>{dailyData.reduce((total, day) => total + day.high, 0).toLocaleString()}</h2>
+          <small>Risk tiers derived from source estimates</small>
         </div>
       </div>
 
@@ -159,37 +129,26 @@ function Analytics() {
         <section className="analytics-chart-card population-chart">
           <div className="analytics-card-heading">
             <div>
-              <h3>ORBITAL POPULATION TREND</h3>
-              <p>Illustrative object distribution over time</p>
+              <h3>OBJECTS BY ORBIT CLASS</h3>
+              <p>Classified from the latest available orbital elements</p>
             </div>
             <Activity size={19} />
           </div>
-
           <div className="chart-area">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={populationData}>
-                <defs>
-                  <linearGradient id="leoGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#65b9ff" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#65b9ff" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-
+              <BarChart data={orbitData}>
                 <CartesianGrid stroke="#26384b" strokeDasharray="3 3" />
                 <XAxis dataKey="name" stroke="#8494a8" fontSize={10} />
                 <YAxis stroke="#8494a8" fontSize={10} />
                 <Tooltip contentStyle={{ background: "#101a28", border: "1px solid #344b64", borderRadius: 8 }} />
-                <Area type="monotone" dataKey="leo" stroke="#65b9ff" fill="url(#leoGradient)" strokeWidth={2} />
-                <Area type="monotone" dataKey="meo" stroke="#b794f6" fill="none" strokeWidth={2} />
-                <Area type="monotone" dataKey="geo" stroke="#ffca72" fill="none" strokeWidth={2} />
-              </AreaChart>
+                <Bar dataKey="value" fill="#65b9ff" radius={[5, 5, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           </div>
-
           <div className="analytics-legend">
-            <span><i className="leo-color" /> LEO</span>
-            <span><i className="meo-color" /> MEO</span>
-            <span><i className="geo-color" /> GEO</span>
+            {orbitData.map((item) => (
+              <span key={item.name}><i style={{ background: item.color }} /> {item.name}</span>
+            ))}
           </div>
         </section>
 
@@ -197,41 +156,29 @@ function Analytics() {
           <div className="analytics-card-heading">
             <div>
               <h3>ORBITAL DISTRIBUTION</h3>
-              <p>Share by orbital category</p>
+              <p>Share of objects with classifiable orbital elements</p>
             </div>
             <Orbit size={19} />
           </div>
-
           <div className="donut-chart">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie
-                  data={orbitData}
-                  dataKey="value"
-                  nameKey="name"
-                  innerRadius={65}
-                  outerRadius={95}
-                  paddingAngle={4}
-                  stroke="none"
-                >
-                  {orbitData.map((entry) => (
-                    <Cell key={entry.name} fill={entry.color} />
-                  ))}
+                <Pie data={orbitData} dataKey="value" nameKey="name" innerRadius={65} outerRadius={95} paddingAngle={4} stroke="none">
+                  {orbitData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
                 </Pie>
                 <Tooltip contentStyle={{ background: "#101a28", border: "1px solid #344b64", borderRadius: 8 }} />
               </PieChart>
             </ResponsiveContainer>
             <div className="donut-center">
-              <strong>100%</strong>
-              <span>DEMO SHARE</span>
+              <strong>{totalOrbitObjects.toLocaleString()}</strong>
+              <span>CLASSIFIED</span>
             </div>
           </div>
-
           <div className="distribution-legend">
             {orbitData.map((item) => (
               <div key={item.name}>
                 <span><i style={{ background: item.color }} /> {item.name}</span>
-                <strong>{item.value}%</strong>
+                <strong>{totalOrbitObjects ? `${Math.round(item.value / totalOrbitObjects * 100)}%` : "—"}</strong>
               </div>
             ))}
           </div>
@@ -240,44 +187,56 @@ function Analytics() {
         <section className="analytics-chart-card activity-chart">
           <div className="analytics-card-heading">
             <div>
-              <h3>OBJECT ACTIVITY</h3>
-              <p>Illustrative weekly activity index</p>
+              <h3>CONJUNCTIONS BY DAY</h3>
+              <p>Predicted SOCRATES events by derived risk tier</p>
             </div>
             <TrendingUp size={19} />
           </div>
-
           <div className="chart-area">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={activityData}>
+              <AreaChart data={dailyData}>
                 <CartesianGrid stroke="#26384b" strokeDasharray="3 3" />
                 <XAxis dataKey="name" stroke="#8494a8" fontSize={10} />
                 <YAxis stroke="#8494a8" fontSize={10} />
                 <Tooltip contentStyle={{ background: "#101a28", border: "1px solid #344b64", borderRadius: 8 }} />
-                <Bar dataKey="objects" fill="#65b9ff" radius={[5, 5, 0, 0]} />
-              </BarChart>
+                <Area type="monotone" dataKey="high" stroke="#ff8585" fill="#ff858522" />
+                <Area type="monotone" dataKey="medium" stroke="#f5d47a" fill="#f5d47a22" />
+                <Area type="monotone" dataKey="low" stroke="#65b9ff" fill="#65b9ff22" />
+              </AreaChart>
             </ResponsiveContainer>
+          </div>
+          <div className="analytics-legend">
+            <span><i style={{ background: "#ff8585" }} /> HIGH</span>
+            <span><i style={{ background: "#f5d47a" }} /> MEDIUM</span>
+            <span><i style={{ background: "#65b9ff" }} /> LOW</span>
           </div>
         </section>
 
-        <section className="analytics-insight-card">
-          <p className="section-eyebrow">ORBITAL INSIGHT</p>
-          <h3>Understanding Earth's orbital environment</h3>
-          <p>
-            Low Earth Orbit represents the largest share in this
-            illustrative dataset. Population density, orbital
-            distribution and object activity are useful indicators
-            for monitoring the space environment.
-          </p>
-          <div className="insight-footer">
-            <Activity size={17} />
-            DEMONSTRATION ANALYTICS
+        <section className="analytics-chart-card activity-chart">
+          <div className="analytics-card-heading">
+            <div>
+              <h3>OBJECT TYPE COUNTS</h3>
+              <p>Classification provided by the catalogue dataset</p>
+            </div>
+            <Satellite size={19} />
+          </div>
+          <div className="chart-area">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={typeData} layout="vertical">
+                <CartesianGrid stroke="#26384b" strokeDasharray="3 3" />
+                <XAxis type="number" stroke="#8494a8" fontSize={10} />
+                <YAxis dataKey="name" type="category" stroke="#8494a8" fontSize={9} width={90} />
+                <Tooltip contentStyle={{ background: "#101a28", border: "1px solid #344b64", borderRadius: 8 }} />
+                <Bar dataKey="value" fill="#b794f6" radius={[0, 5, 5, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </section>
       </div>
 
       <p className="analytics-disclaimer">
-        All charts, values and activity indicators are simulated frontend
-        examples. They are not live measurements or verified orbital statistics.
+        Orbit classes are derived from mean motion. Conjunctions are predicted encounters from the SOCRATES sample,
+        not observed collisions or validated collision probabilities.
       </p>
     </div>
   );
