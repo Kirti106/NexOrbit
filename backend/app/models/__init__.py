@@ -1,3 +1,3 @@
-from .satellite import Satellite
+from .satellite import Conjunction, GPHistory, Satellite
 
-__all__ = ["Satellite"]
+__all__ = ["Conjunction", "GPHistory", "Satellite"]

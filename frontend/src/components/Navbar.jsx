@@ -32,8 +32,6 @@ function Navbar() {
 
       <nav className="nova-navigation">
         {navItems.map((item) => {
-          const Icon = item.icon;
-
           return (
             <NavLink
               to={item.path}

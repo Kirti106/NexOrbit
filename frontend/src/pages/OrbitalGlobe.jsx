@@ -1,5 +1,5 @@
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Viewer } from "resium";
 import {
   Ion,
@@ -27,17 +27,12 @@ const heights = {
 
 function OrbitalGlobe({ satellites = [], onSatelliteSelect }) {
   const viewerRef = useRef(null);
-  const [ready, setReady] = useState(false);
-  const [error, setError] = useState("");
+  const ready = Boolean(token);
+  const error = token ? "" : "Cesium ion token is missing.";
 
   useEffect(() => {
-    if (!token) {
-      setError("Cesium ion token is missing.");
-      return;
-    }
-
+    if (!token) return;
     Ion.defaultAccessToken = token;
-    setReady(true);
   }, []);
 
   useEffect(() => {
