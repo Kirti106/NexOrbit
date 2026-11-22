@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
+import logging
 
 import numpy as np
 import pandas as pd
@@ -63,18 +64,29 @@ def utc(value: datetime | str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+
 @app.get("/health", response_model=HealthResponse)
 def health():
     try:
         engine = create_database_engine()
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
+        engine.dispose()
+
         database = "connected"
         status: Literal["healthy", "degraded"] = "healthy"
+
     except Exception:
+        logging.exception("ML database health check failed")
         database = "unavailable"
         status = "degraded"
-    return HealthResponse(model_version=MODEL_VERSION, generated_at=now(), status=status, database=database)
+
+    return HealthResponse(
+        model_version=MODEL_VERSION,
+        generated_at=now(),
+        status=status,
+        database=database
+    )
 
 
 @app.get("/satellites", response_model=SatelliteListResponse)
