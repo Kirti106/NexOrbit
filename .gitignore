@@ -30,3 +30,6 @@ dist/
 .vscode/
 .DS_Store
 Thumbs.db
+!.env.example
+!ml/.env.example
+!frontend/.env.example

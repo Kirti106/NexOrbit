@@ -1,84 +1,73 @@
-
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertTriangle,
   Search,
   ShieldAlert,
   Clock,
-  Activity,
   X,
   ArrowUpRight,
 } from "lucide-react";
 
+import { ApiError } from "../components/ApiState";
+import { useApi } from "../hooks/useApi";
+import { getConjunctions } from "../api/client";
+import { fmtProb, fmtUtc } from "../utils/format";
 import "./Alerts.css";
 
-const alerts = [
-  {
-    id: "CA-2026-001",
-    title: "ISS / OBJECT 48291",
-    severity: "CRITICAL",
-    distance: "0.8 km",
-    velocity: "14.2 km/s",
-    time: "22 Nov 2026 · 08:45 UTC",
-    probability: "Pending assessment",
-    description: "Potentially close orbital encounter requiring further screening.",
-  },
-  {
-    id: "CA-2026-002",
-    title: "NOAA 19 / OBJECT 51208",
-    severity: "HIGH",
-    distance: "2.4 km",
-    velocity: "9.8 km/s",
-    time: "22 Nov 2026 · 11:20 UTC",
-    probability: "Pending assessment",
-    description: "Close approach flagged for additional orbital analysis.",
-  },
-  {
-    id: "CA-2026-003",
-    title: "TERRA / OBJECT 39120",
-    severity: "MEDIUM",
-    distance: "6.7 km",
-    velocity: "7.4 km/s",
-    time: "22 Nov 2026 · 15:10 UTC",
-    probability: "Pending assessment",
-    description: "Monitoring recommended as the encounter approaches.",
-  },
-  {
-    id: "CA-2026-004",
-    title: "GPS BIIR-2 / OBJECT 60123",
-    severity: "LOW",
-    distance: "12.5 km",
-    velocity: "4.6 km/s",
-    time: "23 Nov 2026 · 02:30 UTC",
-    probability: "Pending assessment",
-    description: "Low-priority proximity event in the demonstration catalogue.",
-  },
-];
+const PER_TIER = 100;
+const BASIS = "Predicted (SOCRATES-derived), not observed";
+const filters = ["ALL", "HIGH", "MEDIUM", "LOW"];
 
-const filters = ["ALL", "CRITICAL", "HIGH", "MEDIUM", "LOW"];
+// Fetch each risk tier separately so every tier is represented, then merge by time.
+async function loadConjunctions() {
+  const minTca = new Date().toISOString();
+  const tiers = ["high", "medium", "low"];
+  const responses = await Promise.all(
+    tiers.map((risk) => getConjunctions({ risk, limit: PER_TIER, minTca }))
+  );
+  const items = responses
+    .flatMap((response) => response.items)
+    .sort((a, b) => new Date(a.tca) - new Date(b.tca));
+  return { items, generated_at: responses[0].generated_at };
+}
+
+function toAlert(item) {
+  return {
+    id: `${item.norad_id_1}-${item.norad_id_2}-${item.tca}`,
+    title: `${item.object_name_1 || item.norad_id_1} / ${item.object_name_2 || item.norad_id_2}`,
+    severity: item.risk_tier.toUpperCase(),
+    distance: `${item.min_range_km.toFixed(3)} km`,
+    velocity: item.rel_speed_kms != null ? `${item.rel_speed_kms.toFixed(2)} km/s` : "—",
+    time: fmtUtc(item.tca),
+    maxProb: item.max_prob,
+    fetchedAt: item.fetched_at,
+    ids: `NORAD ${item.norad_id_1} / ${item.norad_id_2}`,
+  };
+}
 
 function Alerts() {
   const [activeFilter, setActiveFilter] = useState("ALL");
   const [search, setSearch] = useState("");
   const [selectedAlert, setSelectedAlert] = useState(null);
 
+  const { data, error, loading } = useApi(loadConjunctions, [], { intervalMs: 300000 });
+
+  const alerts = useMemo(() => (data?.items || []).map(toAlert), [data]);
+
   const filteredAlerts = alerts.filter((alert) => {
-    const matchesFilter =
-      activeFilter === "ALL" || alert.severity === activeFilter;
-
+    const matchesFilter = activeFilter === "ALL" || alert.severity === activeFilter;
+    const term = search.toLowerCase();
     const matchesSearch =
-      alert.title.toLowerCase().includes(search.toLowerCase()) ||
-      alert.id.toLowerCase().includes(search.toLowerCase());
-
+      alert.title.toLowerCase().includes(term) || alert.ids.toLowerCase().includes(term);
     return matchesFilter && matchesSearch;
   });
 
-  const counts = {
-    CRITICAL: alerts.filter((a) => a.severity === "CRITICAL").length,
-    HIGH: alerts.filter((a) => a.severity === "HIGH").length,
-    MEDIUM: alerts.filter((a) => a.severity === "MEDIUM").length,
-    LOW: alerts.filter((a) => a.severity === "LOW").length,
+  const count = (severity) => {
+    const n = alerts.filter((a) => a.severity === severity).length;
+    return n >= PER_TIER ? `${n}+` : String(n);
   };
+
+  const asOf = alerts[0]?.fetchedAt;
 
   return (
     <div className="alerts-page">
@@ -88,20 +77,24 @@ function Alerts() {
           <h1>Conjunction Alerts</h1>
           <p>Monitor potential close approaches between orbital objects.</p>
         </div>
-        <div className="alerts-demo-status">SIMULATED DEMO DATA</div>
+        <div className="alerts-demo-status">
+          {error && !data ? "BACKEND OFFLINE" : asOf ? `PREDICTIONS AS OF ${fmtUtc(asOf).toUpperCase()}` : "LOADING..."}
+        </div>
       </div>
+
+      <ApiError message={error} title="Could not load conjunctions" />
 
       <div className="alert-summary-grid">
         {[
-          { label: "CRITICAL", value: counts.CRITICAL },
-          { label: "HIGH RISK", value: counts.HIGH },
-          { label: "MEDIUM RISK", value: counts.MEDIUM },
-          { label: "LOW RISK", value: counts.LOW },
+          { label: "HIGH TIER", value: count("HIGH") },
+          { label: "MEDIUM TIER", value: count("MEDIUM") },
+          { label: "LOW TIER", value: count("LOW") },
+          { label: "UPCOMING LOADED", value: alerts.length },
         ].map((item) => (
           <div className="alert-summary-card" key={item.label}>
             <span>{item.label}</span>
-            <h2>{item.value}</h2>
-            <p>Demo events</p>
+            <h2>{loading && !data ? "…" : item.value}</h2>
+            <p>Upcoming predicted events</p>
           </div>
         ))}
       </div>
@@ -110,7 +103,7 @@ function Alerts() {
         <div className="alerts-search">
           <Search size={18} />
           <input
-            placeholder="Search alert or object..."
+            placeholder="Search object name or NORAD ID..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -140,9 +133,9 @@ function Alerts() {
               <div className="alert-card-top">
                 <span className={`severity-tag ${alert.severity.toLowerCase()}`}>
                   <AlertTriangle size={12} />
-                  {alert.severity}
+                  {alert.severity} TIER
                 </span>
-                <span className="alert-id">{alert.id}</span>
+                <span className="alert-id">{alert.ids}</span>
               </div>
 
               <h3>{alert.title}</h3>
@@ -162,17 +155,18 @@ function Alerts() {
                 </div>
               </div>
 
-              <div className="alert-card-footer">
-                <span>Assessment pending</span>
+              <div
+                className="alert-card-footer"
+                title={`SOCRATES maximum probability: ${fmtProb(alert.maxProb)} (an estimate, not an observed collision probability)`}
+              >
+                <span>{BASIS}</span>
                 <ArrowUpRight size={17} />
               </div>
             </article>
           ))}
 
-          {filteredAlerts.length === 0 && (
-            <div className="alerts-empty">
-              No matching alerts found.
-            </div>
+          {!loading && !error && filteredAlerts.length === 0 && (
+            <div className="alerts-empty">No matching alerts found.</div>
           )}
         </div>
 
@@ -187,15 +181,15 @@ function Alerts() {
               </div>
 
               <span className={`severity-tag ${selectedAlert.severity.toLowerCase()}`}>
-                {selectedAlert.severity}
+                {selectedAlert.severity} TIER
               </span>
 
               <h2>{selectedAlert.title}</h2>
-              <p>{selectedAlert.description}</p>
+              <p>{BASIS}. Risk tiers are derived from SOCRATES output and are not observed collision probabilities.</p>
 
               <div className="alert-detail-metric">
-                <span>Alert ID</span>
-                <strong>{selectedAlert.id}</strong>
+                <span>Objects</span>
+                <strong>{selectedAlert.ids}</strong>
               </div>
               <div className="alert-detail-metric">
                 <span>Closest approach</span>
@@ -206,17 +200,24 @@ function Alerts() {
                 <strong>{selectedAlert.velocity}</strong>
               </div>
               <div className="alert-detail-metric">
-                <span>Encounter time</span>
+                <span>Time of closest approach</span>
                 <strong>{selectedAlert.time}</strong>
               </div>
+              <div
+                className="alert-detail-metric"
+                title="SOCRATES maximum-probability estimate under assumed covariance. Secondary information only."
+              >
+                <span>SOCRATES max probability</span>
+                <strong>{fmtProb(selectedAlert.maxProb)}</strong>
+              </div>
               <div className="alert-detail-metric">
-                <span>Collision probability</span>
-                <strong>{selectedAlert.probability}</strong>
+                <span>Predictions as of</span>
+                <strong>{fmtUtc(selectedAlert.fetchedAt)}</strong>
               </div>
 
               <p className="alert-disclaimer">
-                Demonstration record only. No validated conjunction
-                assessment or collision probability is available.
+                Constellation self-conjunction artifacts are excluded. Element sets age
+                quickly, so treat events as screening results, not warnings.
               </p>
             </>
           ) : (
@@ -231,8 +232,8 @@ function Alerts() {
 
       <div className="alerts-footnote">
         <Clock size={15} />
-        All alert records are simulated frontend examples, not actual
-        conjunction warnings.
+        Showing up to {PER_TIER} upcoming events per tier. All events are SOCRATES-derived
+        predictions, not observed conjunctions.
       </div>
     </div>
   );

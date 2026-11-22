@@ -32,6 +32,7 @@ class SatelliteListResponse(ResponseMeta):
 class LivePosition(BaseModel):
     norad_id: int
     name: str
+    object_type: str = "UNKNOWN"
     latitude: float
     longitude: float
     altitude_km: float
