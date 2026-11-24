@@ -1,3 +1,4 @@
+
 import "./Hero.css";
 import { ArrowUpRight, Globe2, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -11,6 +12,7 @@ function Hero() {
 
   useEffect(() => {
     const controller = new AbortController();
+
     Promise.allSettled([
       getStats({ signal: controller.signal }),
       getLivePositions(3, { signal: controller.signal }),
@@ -19,13 +21,19 @@ function Hero() {
         setStats(statsResult.value);
         setApiConnected(true);
       }
+
       if (liveResult.status === "fulfilled") {
         setLive(liveResult.value.items || []);
       }
-      if (statsResult.status === "rejected" && statsResult.reason.name !== "AbortError") {
+
+      if (
+        statsResult.status === "rejected" &&
+        statsResult.reason.name !== "AbortError"
+      ) {
         setApiConnected(false);
       }
     });
+
     return () => controller.abort();
   }, []);
 
@@ -37,7 +45,9 @@ function Hero() {
         <div className="hero-status">
           <span className="status-indicator"></span>
           ORBITAL INTELLIGENCE SYSTEM
-          <span className="nominal">{apiConnected ? "API CONNECTED" : "API OFFLINE"}</span>
+          <span className="nominal">
+            {apiConnected ? "API CONNECTED" : "API OFFLINE"}
+          </span>
         </div>
 
         <p className="hero-eyebrow">SPACE TRAFFIC INTELLIGENCE</p>
@@ -93,10 +103,13 @@ function Hero() {
         {live.length > 0 && (
           <div className="hero-live-stack">
             <p>LIVE PROPAGATION</p>
+
             {live.map((item) => (
               <div className="hero-live-row" key={item.norad_id}>
                 <span>{item.name}</span>
-                <strong>{item.altitude_km.toFixed(0)} km</strong>
+                <strong>
+                  {Number(item.altitude_km).toFixed(0)} km
+                </strong>
               </div>
             ))}
           </div>
@@ -107,19 +120,26 @@ function Hero() {
         <div className="hero-console-strip">
           <div>
             <span>TRACKED</span>
-            <strong>{stats.total_satellites.toLocaleString()}</strong>
+            <strong>
+              {Number(stats.tracked_satellites ?? 0).toLocaleString("en-US")}
+            </strong>
           </div>
+
           <div>
             <span>CONJUNCTIONS</span>
-            <strong>{stats.conjunction_count.toLocaleString()}</strong>
+            <strong>
+              {Number(stats.conjunctions ?? 0).toLocaleString("en-US")}
+            </strong>
           </div>
+
           <div>
             <span>HIGH RISK</span>
-            <strong>{stats.high_risk_conjunctions.toLocaleString()}</strong>
+            <strong>
+              {Number(stats.high_risk_conjunctions ?? 0).toLocaleString("en-US")}
+            </strong>
           </div>
         </div>
       )}
-
     </section>
   );
 }
