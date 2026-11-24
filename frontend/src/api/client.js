@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // Backend base URL, including /api. Set VITE_API_URL in frontend/.env to override.
-export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+export const API_URL = import.meta.env.VITE_API_URL || "https://nexorbit-backend.onrender.com/api";
 
 const http = axios.create({ baseURL: API_URL, timeout: 30000 });
 
